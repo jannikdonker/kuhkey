@@ -1,3 +1,4 @@
+use anyhow::bail;
 use clap::{Parser, Subcommand};
 use rand::{
     SeedableRng,
@@ -6,6 +7,7 @@ use rand::{
 };
 
 const DEFAULT_PASSWORD_LENGTH: usize = 16;
+pub const MINIMUM_PASSWORD_LENGTH: usize = 8;
 
 // Usage right now:
 //
@@ -45,10 +47,17 @@ enum Commands {
     /// `./kuhkey_cli get --copy github`
     ///
     /// Retrives the password for github and puts it into your clipboard
-    Get,
+    Get {
+        /// Identifier for the password entry
+        identifier: String,
+
+        /// Copy the password directly to the clipboard
+        #[arg(long)]
+        copy: bool,
+    },
 }
 
-fn main() {
+fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
 
     match &cli.commands {
@@ -60,15 +69,27 @@ fn main() {
         }
         Commands::Gen { length } => {
             let p_length = length.unwrap_or(DEFAULT_PASSWORD_LENGTH);
+
+            if p_length < MINIMUM_PASSWORD_LENGTH {
+                bail!(
+                    "InvalidPassword - Expected a minimum password length of {MINIMUM_PASSWORD_LENGTH}, found {p_length}"
+                )
+            }
+
             println!("Generating a password with length {p_length}");
             let password = generate_password(p_length);
 
             println!("Password: {}", password);
         }
-        Commands::Get => {
-            println!("Retrieving password")
+        Commands::Get { identifier, copy } => {
+            println!(
+                "Searching password for {} - Copy to clipboard: {copy}",
+                identifier
+            );
         }
     }
+
+    Ok(())
 }
 
 /// TODO: MOVE THIS INTO kuhkey_core
