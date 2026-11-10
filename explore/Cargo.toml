@@ -1,0 +1,12 @@
+[package]
+name = "kuhkey"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aes-gcm = { version = "0.10", features = ["aes", "rand_core"] }
+bcrypt = "0.19.3"
+egui = "0.37.0"
+ratatui = "0.30.2"
+serde = { version = "1.0.229", features = ["serde_derive"] }
+serde_json = "1.0.154"
