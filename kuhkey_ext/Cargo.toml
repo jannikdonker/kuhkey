@@ -3,5 +3,9 @@ name = "kuhkey_ext"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 kuhkey_core = { path = "../kuhkey_core" }
+wasm-bindgen = "0.2"
