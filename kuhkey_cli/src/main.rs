@@ -12,7 +12,7 @@ const DEFAULT_PASSWORD_LENGTH: usize = 16;
 // kuhkey_cli.exe init
 //
 // kuhkey_cli.exe gen -> Generates a password with length 16 (default)
-// kuhkey_cli.exe gen --len 18 -> Generates a password with length 18
+// kuhkey_cli.exe gen --len 25 -> Generates a password with length 18
 #[derive(Parser)]
 struct Cli {
     #[command(subcommand)]
@@ -24,6 +24,9 @@ enum Commands {
     /// Initialize a new KuhKey Vault
     Init,
 
+    /// Unlock your vault
+    Unlock,
+
     /// Generate a new password
     ///
     /// This accepts an optional length which when set
@@ -34,6 +37,15 @@ enum Commands {
         #[arg(long = "len")]
         length: Option<usize>,
     },
+
+    /// Get the password for a given identifier
+    ///
+    /// An optional `--copy` puts the password into your clipboard
+    ///
+    /// `./kuhkey_cli get --copy github`
+    ///
+    /// Retrives the password for github and puts it into your clipboard
+    Get,
 }
 
 fn main() {
@@ -43,6 +55,9 @@ fn main() {
         Commands::Init => {
             println!("Init kuh key")
         }
+        Commands::Unlock => {
+            println!("Unlocking kuh vault")
+        }
         Commands::Gen { length } => {
             let p_length = length.unwrap_or(DEFAULT_PASSWORD_LENGTH);
             println!("Generating a password with length {p_length}");
@@ -50,9 +65,13 @@ fn main() {
 
             println!("Password: {}", password);
         }
+        Commands::Get => {
+            println!("Retrieving password")
+        }
     }
 }
 
+/// TODO: MOVE THIS INTO kuhkey_core
 // From: https://rust-random.github.io/book/guide-rngs.html#state-and-seeding
 // It is worth noting that a CSPRNG’s security relies absolutely on being seeded with a secure random key.
 // Should the key be known or guessable, all output of the CSPRNG is easy to guess.
