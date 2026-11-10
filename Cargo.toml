@@ -1,0 +1,6 @@
+[workspace]
+resolver = "3"
+members = [
+  "kuhkey_cli",
+  "kuhkey_core"
+, "kuhkey_gui"]
