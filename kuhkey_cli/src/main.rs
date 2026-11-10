@@ -1,26 +1,85 @@
+use clap::{Parser, Subcommand};
+use rand::{
+    SeedableRng,
+    distr::{Alphanumeric, Distribution},
+    rngs::ChaCha12Rng,
+};
+
+const DEFAULT_PASSWORD_LENGTH: usize = 16;
+
+// Usage right now:
+//
+// kuhkey_cli.exe init
+//
+// kuhkey_cli.exe gen -> Generates a password with length 16 (default)
+// kuhkey_cli.exe gen --len 18 -> Generates a password with length 18
+#[derive(Parser)]
+struct Cli {
+    #[command(subcommand)]
+    commands: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Initialize a new KuhKey Vault
+    Init,
+
+    /// Generate a new password
+    ///
+    /// This accepts an optional length which when set
+    /// is the length of the password
+    ///
+    /// If this is not set, the default password will be `16` characters long
+    Gen {
+        #[arg(long = "len")]
+        length: Option<usize>,
+    },
+}
+
 fn main() {
-    say_hello();
-}
+    let cli = Cli::parse();
 
-pub fn hello_message() -> String {
-    "Hello from core!".into()
-}
+    match &cli.commands {
+        Commands::Init => {
+            println!("Init kuh key")
+        }
+        Commands::Gen { length } => {
+            let p_length = length.unwrap_or(DEFAULT_PASSWORD_LENGTH);
+            println!("Generating a password with length {p_length}");
+            let password = generate_password(p_length);
 
-pub fn say_hello() {
-    println!("{}", hello_message())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hello_message_is_correct() {
-        assert_eq!(hello_message(), "Hello from core!");
+            println!("Password: {}", password);
+        }
     }
+}
 
-    #[test]
-    fn prints_same_as_core() {
-        assert_eq!(hello_message(), kuhkey_core::hello_message());
-    }
+// From: https://rust-random.github.io/book/guide-rngs.html#state-and-seeding
+// It is worth noting that a CSPRNG’s security relies absolutely on being seeded with a secure random key.
+// Should the key be known or guessable, all output of the CSPRNG is easy to guess.
+// This implies that the seed should come from a trusted source; usually either the OS or another CSPRNG.
+// For this purpose, we recommend using the getrandom crate which interfaces the OS’s secure random interface.
+fn generate_random_seed() -> Result<[u8; 32], getrandom::Error> {
+    let mut buf = [0u8; 32];
+    getrandom::fill(&mut buf)?;
+    Ok(buf)
+}
+
+/// TODO: MOVE THIS INTO kuhkey_core
+///
+/// Generates a random password
+fn generate_password(length: usize) -> String {
+    let Ok(seed) = generate_random_seed() else {
+        // Failed to generate a random seed?!
+        // Probably crash?
+        panic!("Failed to generate random seed");
+    };
+
+    let mut rng = ChaCha12Rng::from_seed(seed);
+    let rng_str: String = Alphanumeric
+        .sample_iter(&mut rng)
+        .take(length)
+        .map(char::from)
+        .collect();
+
+    rng_str
 }
