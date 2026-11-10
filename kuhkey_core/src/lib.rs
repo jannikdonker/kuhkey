@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::prelude;
+use std::{io::Error, prelude};
 
 const MAGIC_BYTES: [u8; 4] = *b"KUHV";
 const VAULT_VERSION: u16 = 1;
@@ -41,6 +41,12 @@ impl Default for KdfParams {
     }
 }
 
+impl KdfParams {
+    pub fn to_bytes(self) -> [u8; 12] {
+        todo!()
+    }
+}
+
 // Bytes: 4 + 2 + 24 + 12 + 12 = 54
 struct VaultHeader {
     magic: [u8; 4],
@@ -50,7 +56,27 @@ struct VaultHeader {
     kdf_params: KdfParams, // 12 bytes (3 * u32)
 }
 
+impl VaultHeader {
+    pub fn to_bytes(&self) -> [u8; HEADER_LEN] {
+        todo!()
+    }
+
+    pub fn from_bytes(b: &[u8; HEADER_LEN]) -> Result<Self, Error> {
+        todo!()
+    }
+}
+
 struct Vault {
     header: VaultHeader,
     payload: Vec<u8>,
+}
+
+impl Vault {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        [&self.header.to_bytes()[..], &self.payload].concat()
+    }
+
+    pub fn from_bytes(b: &[u8]) -> Result<Self, Error> {
+        todo!()
+    }
 }
