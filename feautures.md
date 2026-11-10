@@ -41,7 +41,7 @@
 - Passphrase mode in the generator
 - Password history, restore old passwords
 - Trash for deleted entries
-- Keyfile or YubiKey as second factor
+- Keyfile or YubiKey as second factor // YubiKey is a bit expensive
 - Secure notes and encrypted attachments
 - Shared vaults with friends
 - German / English UI
