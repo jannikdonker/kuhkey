@@ -1,5 +1,5 @@
 pub fn hello_message() -> String {
-    "Hello from core!".into()
+    "Hello from other core!".into()
 }
 
 pub fn say_hello() {
