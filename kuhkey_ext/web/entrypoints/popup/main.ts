@@ -1,9 +1,10 @@
 import './style.css';
 import init, { greet } from '../../wasm/kuhkey_ext.js';
+import cowurl from '../../assets/cow.jpeg'
 
 init().then(() => {
   document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-    <h1>KuhKey</h1>
+    <img src="${cowurl}" width="120" alt="cow">
     <p>${greet('Yoshi')}</p>
   `;
 });
