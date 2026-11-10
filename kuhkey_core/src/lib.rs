@@ -1,3 +1,17 @@
+pub fn hello_message() -> &'static str {
+    "Hello from core!"
+}
+
 pub fn say_hello() {
-    println!("Hello from core!")
+    println!("{}", hello_message())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hello_message_is_correct() {
+        assert_eq!(hello_message(), "Hello from core!");
+    }
 }
