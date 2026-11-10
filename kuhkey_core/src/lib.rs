@@ -12,6 +12,6 @@ mod tests {
 
     #[test]
     fn hello_message_is_correct() {
-        assert_eq!(hello_message(), "Hello from other core!");
+        assert_eq!(hello_message(), "Hello from core!");
     }
 }
