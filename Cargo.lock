@@ -14,6 +14,13 @@ name = "kuhkey_core"
 version = "0.1.0"
 
 [[package]]
+name = "kuhkey_ext"
+version = "0.1.0"
+dependencies = [
+ "kuhkey_core",
+]
+
+[[package]]
 name = "kuhkey_gui"
 version = "0.1.0"
 dependencies = [
