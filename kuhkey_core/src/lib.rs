@@ -1,5 +1,5 @@
-pub fn hello_message() -> &'static str {
-    "Hello from core!"
+pub fn hello_message() -> String {
+    "Hello from core!".into()
 }
 
 pub fn say_hello() {
