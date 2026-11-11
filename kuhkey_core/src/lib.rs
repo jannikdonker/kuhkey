@@ -1,5 +1,13 @@
+use chacha20poly1305::{
+    ChaCha20Poly1305, ChaChaPoly1305, XChaCha20Poly1305, aead::common::getrandom,
+};
+use rand_core::Rng;
 use serde::{Deserialize, Serialize};
-use std::{io::Error, prelude};
+use std::io::Error;
+
+use zeroize::Zeroizing;
+
+mod generator;
 
 const MAGIC_BYTES: [u8; 4] = *b"KUHV";
 const VAULT_VERSION: u16 = 1;
@@ -15,6 +23,7 @@ const MAX_M_COST: u32 = 1024 * 1024;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
 struct Entry {
+    id: [u8; 16],
     password: String,
     username: String,
     url: String,
@@ -79,4 +88,27 @@ impl Vault {
     pub fn from_bytes(b: &[u8]) -> Result<Self, Error> {
         todo!()
     }
+}
+
+fn derive_key(
+    password: &[u8],
+    salt: &[u8],
+    p: KdfParams,
+) -> Result<Zeroizing<[u8; KEY_LEN]>, Error> {
+    todo!()
+}
+
+/// Encrypts `entries` into a new vault with a fresh salt and nonce.
+/// Call this again on every save: the nonce must never be reused with the same key.
+pub fn create_vault(
+    password: &[u8],
+    entries: &[Entry],
+    kdf_params: KdfParams,
+) -> Result<Vault, Error> {
+    todo!()
+}
+
+/// Decrypts a vault. Fails with `VaultError::Decrypt` on a wrong password or a modified file.
+pub fn open_vault(password: &[u8], vault: &Vault) -> Result<Vec<Entry>, Error> {
+    todo!()
 }
