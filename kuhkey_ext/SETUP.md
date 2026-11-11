@@ -1,28 +1,28 @@
 # kuhkey_ext – Setup
 
-## Funktionsweise
+## How it works
 
 ```
-kuhkey_core     Rust-Logik (Crypto, Vault, Generator)
-kuhkey_ext      exportiert Funktionen mit #[wasm_bindgen]
+kuhkey_core     Rust logic (crypto, vault, generator)
+kuhkey_ext      exports functions with #[wasm_bindgen]
   ↓ wasm-pack build
-web/wasm/       .wasm + JS-Wrapper + .d.ts
+web/wasm/       .wasm + JS wrapper + .d.ts
   ↓ import in TypeScript
-web/            WXT-Projekt → .output/chrome-mv3/
+web/            WXT project → .output/chrome-mv3/
 ```
 
-Rust-Funktion in `kuhkey_ext/src/lib.rs`:
+Rust function in `kuhkey_ext/src/lib.rs`:
 
 ```rust
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub fn greet(name: &str) -> String {
-    format!("Hallo {name}")
+    format!("Hello {name}")
 }
 ```
 
-Aufruf in `web/entrypoints/popup/main.ts`. `init()` lädt das WASM-Modul und muss vor dem ersten Aufruf fertig sein:
+Called from `web/entrypoints/popup/main.ts`. `init()` loads the WASM module and must finish before the first call:
 
 ```ts
 import init, { greet } from '../../wasm/kuhkey_ext.js';
@@ -30,20 +30,20 @@ import init, { greet } from '../../wasm/kuhkey_ext.js';
 init().then(() => console.log(greet('Yoshi')));
 ```
 
-## Erstes Setup
+## First-time setup
 
-Voraussetzungen: Rust ([rustup.rs](https://rustup.rs), unter Windows mit C++ Build Tools) und Node.js ≥ 18.
+Prerequisites: Rust ([rustup.rs](https://rustup.rs), on Windows with the C++ Build Tools) and Node.js ≥ 18.
 
-Einmal pro Rechner:
+Once per machine:
 
 ```bash
 rustup target add wasm32-unknown-unknown
 cargo install wasm-pack
 ```
 
-Danach Terminal neu öffnen.
+Then reopen your terminal.
 
-Projekt bauen:
+Build the project:
 
 ```bash
 # in kuhkey_ext/
@@ -54,21 +54,21 @@ npm install
 npm run dev
 ```
 
-`web/wasm/`, `node_modules/` und `.output/` sind nicht im Git und müssen auf jedem Rechner erzeugt werden.
+`web/wasm/`, `node_modules/` and `.output/` are not in Git and have to be generated on every machine.
 
 ## Workflow
 
-- Änderungen in `web/`: lädt automatisch neu.
-- Änderungen am Rust-Code: `wasm-pack build` erneut ausführen.
-- `npm run build` erzeugt die fertige Extension in `web/.output/chrome-mv3/`, laden über `chrome://extensions` → „Entpackte Erweiterung laden“.
+- Changes in `web/`: reload automatically.
+- Changes to the Rust code: run `wasm-pack build` again.
+- `npm run build` creates the finished extension in `web/.output/chrome-mv3/`; load it via `chrome://extensions` → "Load unpacked".
 
-## Fehler
+## Troubleshooting
 
-- **`can't find library`**: `src/lib.rs` fehlt.
-- **`command not found` / `not recognized`**: Tool nicht installiert oder Terminal nicht neu geöffnet.
-- **`Could not read package.json`**: `npm` im falschen Ordner, muss in `web/` laufen.
-- **`Permission denied` bei `node_modules/.bin/wxt`**: Cloud-Sync-Ordner. `node_modules` löschen, `npm install`, Repo besser außerhalb von Nextcloud/OneDrive ablegen.
-- **CSP-Fehler beim Laden des WASM**: in `wxt.config.ts` unter `manifest` ergänzen:
+- **`can't find library`**: `src/lib.rs` is missing.
+- **`command not found` / `not recognized`**: tool not installed, or terminal not reopened.
+- **`Could not read package.json`**: `npm` run in the wrong folder; it must run in `web/`.
+- **`Permission denied` on `node_modules/.bin/wxt`**: cloud-sync folder. Delete `node_modules`, run `npm install`, and preferably keep the repo outside of Nextcloud/OneDrive.
+- **CSP error when loading the WASM**: add this under `manifest` in `wxt.config.ts`:
   ```ts
   content_security_policy: {
     extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",

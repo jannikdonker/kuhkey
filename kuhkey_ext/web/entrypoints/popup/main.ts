@@ -64,8 +64,8 @@ function showEntry(entry: Entry) {
   const close = document.createElement('button');
   close.className = 'detail-close';
   close.textContent = '✕';
-  close.title = 'Schließen';
-  close.setAttribute('aria-label', 'Schließen');
+  close.title = 'Close';
+  close.setAttribute('aria-label', 'Close');
   close.addEventListener('click', () => {
     list.querySelector('.entry-item.selected')?.classList.remove('selected');
     showCow();
@@ -79,7 +79,7 @@ function showEntry(entry: Entry) {
   card.className = 'field-card';
   card.append(
     usernameField(entry.username),
-    passwordField(entry.password),
+    passwordField(entry),
   );
 
   const content = document.createElement('div');
@@ -119,40 +119,89 @@ function showCopyNotify(text: string) {
 
 let clearTimer: number | undefined;
 
-function passwordField(password: string): HTMLElement {
-  const row = field('Passwort', MASK);
+function passwordField(entry: Entry): HTMLElement {
+  const row = field('Password', MASK);
   const valueEl = row.querySelector<HTMLElement>('.field-value')!;
   valueEl.classList.add('field-password');
   valueEl.tabIndex = 0; // so it can be reached with tab
 
   // so it only reveals the password when a user intends to do it
-  const reveal = () => (valueEl.textContent = password);
+  const reveal = () => (valueEl.textContent = entry.password);
   const hide = () => (valueEl.textContent = MASK);
   valueEl.addEventListener('mouseenter', reveal);
   valueEl.addEventListener('mouseleave', hide);
   valueEl.addEventListener('focus', reveal);
   valueEl.addEventListener('blur', hide);
 
-  // bei klick kopiert es und löscht es nach 30 sec wieder
+  // on click, copy it and clear the clipboard again after 30 sec
   valueEl.addEventListener('click', () => {
-    navigator.clipboard.writeText(password);
+    navigator.clipboard.writeText(entry.password);
     clearTimeout(clearTimer);
     clearTimer = window.setTimeout(() => navigator.clipboard.writeText(''), 30_000);
-    showCopyNotify('Passwort kopiert!');
+    showCopyNotify('Password copied!');
+  });
+
+  const edit = document.createElement('button');
+  edit.className = 'field-edit';
+  edit.textContent = 'Edit';
+  edit.title = 'Edit password';
+  edit.setAttribute('aria-label', 'Edit password');
+
+  // value and edit button side by side
+  const line = document.createElement('div');
+  line.className = 'field-line';
+  line.append(valueEl, edit);
+  row.append(line);
+
+  // click ✎ → input field; Enter saves, Esc (or clicking away) cancels
+  edit.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.className = 'field-input';
+    input.type = 'text';
+    input.value = entry.password;
+    input.setAttribute('aria-label', 'New password');
+
+    let done = false;
+    const finish = (save: boolean) => {
+      if (done) return;
+      done = true;
+      if (save && input.value !== '') {
+        entry.password = input.value;
+        showCopyNotify('Password saved!');
+      }
+      hide();
+      input.replaceWith(valueEl);
+      edit.hidden = false;
+      edit.focus();
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') finish(true);
+      if (e.key === 'Escape') {
+        e.preventDefault(); // keep Esc from closing the popup
+        finish(false);
+      }
+    });
+    input.addEventListener('blur', () => finish(false));
+
+    valueEl.replaceWith(input);
+    edit.hidden = true;
+    input.focus();
+    input.select();
   });
 
   return row;
 }
 
 function usernameField(username: string): HTMLElement {
-  const row = field('Benutzername', username);
+  const row = field('Username', username);
   const valueEl = row.querySelector<HTMLElement>('.field-value')!;
   valueEl.classList.add('field-username');
   valueEl.tabIndex = 0;
 
   valueEl.addEventListener('click', () => {
     navigator.clipboard.writeText(username);
-    showCopyNotify('Benutzername kopiert!');
+    showCopyNotify('Username copied!');
   });
 
   return row;
