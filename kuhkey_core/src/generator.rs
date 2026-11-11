@@ -71,16 +71,57 @@ pub fn generate_password(opts: &PasswordOptions) -> Result<String, Error> {
     };
 
     let mut pw = String::with_capacity(opts.length);
-    while pw.len() < opts.length {
-        let mut buf = [0u8; 64];
-        rng.fill_bytes(&mut buf);
-        for &b in &buf {
-            if charset.contains(&b) {
-                pw.push(b as char);
-            };
+    loop {
+        while pw.len() < opts.length {
+            let mut buf = [0u8; 64];
+            rng.fill_bytes(&mut buf);
+            for &b in &buf {
+                if charset.contains(&b) {
+                    pw.push(b as char);
+                };
+            }
+        }
+        if password_has_reqs(&pw, opts) {
+            return Ok(pw);
         }
     }
-    Ok(pw)
+}
+
+fn password_has_reqs(pw: &str, opts: &PasswordOptions) -> bool {
+    let mut contains_upper = false;
+    let mut contains_lower = false;
+    let mut contains_numbers = false;
+    let mut contains_symbols = false;
+    let mut contains_lookalikes = false;
+
+    for c in pw.as_bytes() {
+        if UPPERCASE.contains(c) {
+            contains_upper = true;
+        };
+        if LOWERCASE.contains(c) {
+            contains_lower = true;
+        };
+        if NUMBERS.contains(c) {
+            contains_numbers = true;
+        };
+        if SYMBOLS.contains(c) {
+            contains_symbols = true;
+        };
+        if LOOKALIKES.contains(c) {
+            contains_lookalikes = true;
+        };
+    }
+
+    // 0 0 1
+    // 0 1 0
+    // 1 0 0
+    // 1 1 1
+    // XNOR or just ==
+    return (opts.uppercase == contains_upper)
+        && (opts.lowercase == contains_lower)
+        && (opts.numbers == contains_numbers)
+        && (opts.symbols == contains_symbols)
+        && (!opts.exclude_lookalikes || !contains_lookalikes)
 }
 
 #[cfg(test)]
