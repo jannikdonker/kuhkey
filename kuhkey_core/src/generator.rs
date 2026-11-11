@@ -79,6 +79,9 @@ pub fn generate_password(opts: &PasswordOptions) -> Result<String, Error> {
                 if charset.contains(&b) {
                     pw.push(b as char);
                 };
+                if pw.len() == opts.length {
+                    break;
+                };
             }
         }
         if password_has_reqs(&pw, opts) {
@@ -121,7 +124,7 @@ fn password_has_reqs(pw: &str, opts: &PasswordOptions) -> bool {
         && (opts.lowercase == contains_lower)
         && (opts.numbers == contains_numbers)
         && (opts.symbols == contains_symbols)
-        && (!opts.exclude_lookalikes || !contains_lookalikes)
+        && (!opts.exclude_lookalikes || !contains_lookalikes);
 }
 
 #[cfg(test)]
