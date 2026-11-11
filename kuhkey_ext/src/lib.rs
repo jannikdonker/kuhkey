@@ -2,5 +2,5 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub fn greet(name: String) -> String {
-    format!("Hallo {name}, das kommt aus Rust 🐄")
+    format!("Hello {name}, this comes from Rust 🐄")
 }
