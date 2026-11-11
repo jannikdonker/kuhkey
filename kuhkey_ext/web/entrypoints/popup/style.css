@@ -5,7 +5,7 @@
   --border: rgba(255, 255, 255, 0.08);
   --text: rgba(255, 255, 255, 0.87);
   --text-muted: rgba(255, 255, 255, 0.6);
-  --accent: #fa0000;
+  --accent: #6C2E1F;
   --accent-text: #ffffff;
 
   color-scheme: dark;
@@ -72,7 +72,7 @@ body {
 
 .layout {
   flex: 1;
-  min-height: 0; 
+  min-height: 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
   border: 1px solid var(--border);
@@ -253,3 +253,48 @@ body {
   background-color: rgba(255, 255, 255, 0.08);
   outline: none;
 }
+.field-username { cursor: pointer; }
+
+.copy-notify {
+    position: absolute;
+    top: 18%;
+    left: 64%;
+    width: 25%;
+    height: 10%;
+    background-color: rgba(57, 255, 20, 0.6);
+    color: black;
+    z-index: 1000;
+    text-align: center;
+    border: 2px solid #39FF14;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    display: none;
+    box-shadow: 0 0 60px 2px #39FF14;
+
+    }
+
+    .copy-notify h2 {
+        margin: 0;
+        font-size: 0.8rem;
+        font-weight: 900;
+        font-family: sans-serif;
+        color: white;
+    }
+
+    .copy-notify.show {
+        display: flex;
+        animation:
+            fadeIn 0.3s ease,
+            fadeOut 0.5s ease 2s forwards;
+    }
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+    }
+
+    @keyframes fadeOut {
+        from { opacity: 1; }
+        to   { opacity: 0; }
+    }
