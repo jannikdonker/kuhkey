@@ -31,11 +31,6 @@ enum Commands {
     },
 
     /// Generate a new password
-    ///
-    /// This accepts an optional length which when set
-    /// is the length of the password
-    ///
-    /// If this is not set, the default password will be `16` characters long
     Gen {
         /// Put the password into the users clipboard after generating
         #[arg(long = "copy")]
@@ -64,6 +59,11 @@ enum Commands {
         /// Exclude look alikes
         #[arg(long = "no-alikes")]
         exclude_lookalikes: bool,
+
+        /// Includes each of the flags above
+        /// Also ignores any other flags except the `no-upper` / `no-lower` ones
+        #[arg(long = "all")]
+        all_params: bool,
     },
 
     /// Get the password for a given identifier
@@ -109,6 +109,7 @@ fn main() -> Result<(), anyhow::Error> {
             numbers,
             symbols,
             exclude_lookalikes,
+            all_params,
         } => {
             let length = length.unwrap_or(DEFAULT_PASSWORD_LENGTH);
 
@@ -120,6 +121,7 @@ fn main() -> Result<(), anyhow::Error> {
                 *numbers,
                 *symbols,
                 *exclude_lookalikes,
+                *all_params,
             )?
         }
         Commands::Get { identifier, copy } => {
@@ -141,6 +143,7 @@ fn cli_gen_password(
     numbers: bool,
     symbols: bool,
     exclude_lookalikes: bool,
+    all_params: bool,
 ) -> Result<(), anyhow::Error> {
     if length < MINIMUM_PASSWORD_LENGTH {
         let err = format!("InvalidPassword - Expected a minimum password length of {MINIMUM_PASSWORD_LENGTH}, found {length}").red();
@@ -152,7 +155,7 @@ fn cli_gen_password(
         bail!("{err}");
     }
 
-    let options = PasswordOptions {
+    let mut options = PasswordOptions {
         length,
         // When --no-upper / --no-lower is set, we need to tell the generator, NOT to use them
         // --no-uper (true) => uppercase (false)
@@ -162,6 +165,12 @@ fn cli_gen_password(
         symbols: symbols,
         exclude_lookalikes: exclude_lookalikes,
     };
+
+    if all_params {
+        options.exclude_lookalikes = false;
+        options.numbers = true;
+        options.symbols = true;
+    }
 
     let password = generate_password(&options);
 
