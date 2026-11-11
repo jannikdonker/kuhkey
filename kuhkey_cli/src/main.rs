@@ -9,12 +9,6 @@ use rand::{
 const DEFAULT_PASSWORD_LENGTH: usize = 16;
 pub const MINIMUM_PASSWORD_LENGTH: usize = 8;
 
-// Usage right now:
-//
-// kuhkey_cli.exe init
-//
-// kuhkey_cli.exe gen -> Generates a password with length 16 (default)
-// kuhkey_cli.exe gen --len 25 -> Generates a password with length 18
 #[derive(Parser)]
 struct Cli {
     #[command(subcommand)]
@@ -28,6 +22,16 @@ enum Commands {
 
     /// Unlock your vault
     Unlock,
+
+    /// Add a password:
+    /// Identifier (email, username, domain)
+    /// ?Password?
+    Add {
+        identifier: String,
+
+        #[arg(long)]
+        gen_p: bool,
+    },
 
     /// Generate a new password
     ///
@@ -66,6 +70,14 @@ fn main() -> Result<(), anyhow::Error> {
         }
         Commands::Unlock => {
             println!("Unlocking kuh vault")
+        }
+        Commands::Add { identifier, gen_p } => {
+            println!("{identifier}");
+
+            if *gen_p {
+                println!("Generating password for you..");
+                todo!()
+            }
         }
         Commands::Gen { length } => {
             let p_length = length.unwrap_or(DEFAULT_PASSWORD_LENGTH);
