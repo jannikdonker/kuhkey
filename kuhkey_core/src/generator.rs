@@ -1,8 +1,17 @@
-use std::io::Error;
+use std::{char, io::Error};
 
 use chacha20poly1305::aead::common::getrandom;
-use rand::distr::{Alphanumeric, SampleString};
+use rand::Rng;
 use rand_chacha::{ChaCha12Rng, rand_core::SeedableRng};
+
+pub const UPPERCASE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+pub const LOWERCASE: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
+pub const NUMBERS: &[u8] = b"0123456789";
+/// No quotes, backslash, backtick or space: those break when pasted into
+/// shells, config files or badly written login forms.
+pub const SYMBOLS: &[u8] = b"!@#$%^&*()-_=+[]{};:,.<>/?~";
+/// Characters that are easy to mix up when read off a screen or typed by hand.
+pub const LOOKALIKES: &[u8] = b"0Oo1Il";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PasswordOptions {
@@ -36,9 +45,42 @@ fn generate_random_seed() -> Result<[u8; 32], getrandom::Error> {
 
 pub fn generate_password(opts: &PasswordOptions) -> Result<String, Error> {
     let seed = generate_random_seed()?;
-
     let mut rng = ChaCha12Rng::from_seed(seed);
-    Ok(Alphanumeric.sample_string(&mut rng, opts.length))
+
+    let mut charset: Vec<u8> = Vec::new();
+
+    if opts.uppercase {
+        charset.append(&mut UPPERCASE.to_vec());
+    };
+    if opts.lowercase {
+        charset.append(&mut LOWERCASE.to_vec());
+    };
+    if opts.numbers {
+        charset.append(&mut NUMBERS.to_vec());
+    };
+    if opts.symbols {
+        charset.append(&mut SYMBOLS.to_vec());
+    };
+    if opts.exclude_lookalikes {
+        charset.retain(|c| !LOOKALIKES.contains(c));
+    };
+
+    if charset.is_empty() {
+        panic!()
+        // TODO: impl error type
+    };
+
+    let mut pw = String::with_capacity(opts.length);
+    while pw.len() < opts.length {
+        let mut buf = [0u8; 64];
+        rng.fill_bytes(&mut buf);
+        for &b in &buf {
+            if charset.contains(&b) {
+                pw.push(b as char);
+            };
+        }
+    }
+    Ok(pw)
 }
 
 #[cfg(test)]
