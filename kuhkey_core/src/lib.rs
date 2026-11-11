@@ -7,7 +7,7 @@ use std::io::Error;
 
 use zeroize::Zeroizing;
 
-mod generator;
+pub mod generator;
 
 const MAGIC_BYTES: [u8; 4] = *b"KUHV";
 const VAULT_VERSION: u16 = 1;
