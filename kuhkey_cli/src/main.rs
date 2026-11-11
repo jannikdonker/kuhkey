@@ -89,9 +89,9 @@ fn main() -> Result<(), anyhow::Error> {
             }
 
             println!("Generating a password with length {p_length}");
-            let password = generate_password(p_length);
+            todo!()
 
-            println!("Password: {}", password);
+            // println!("Password: {}", password);
         }
         Commands::Get { identifier, copy } => {
             println!(
@@ -102,36 +102,4 @@ fn main() -> Result<(), anyhow::Error> {
     }
 
     Ok(())
-}
-
-/// TODO: MOVE THIS INTO kuhkey_core
-// From: https://rust-random.github.io/book/guide-rngs.html#state-and-seeding
-// It is worth noting that a CSPRNG’s security relies absolutely on being seeded with a secure random key.
-// Should the key be known or guessable, all output of the CSPRNG is easy to guess.
-// This implies that the seed should come from a trusted source; usually either the OS or another CSPRNG.
-// For this purpose, we recommend using the getrandom crate which interfaces the OS’s secure random interface.
-fn generate_random_seed() -> Result<[u8; 32], getrandom::Error> {
-    let mut buf = [0u8; 32];
-    getrandom::fill(&mut buf)?;
-    Ok(buf)
-}
-
-/// TODO: MOVE THIS INTO kuhkey_core
-///
-/// Generates a random password
-fn generate_password(length: usize) -> String {
-    let Ok(seed) = generate_random_seed() else {
-        // Failed to generate a random seed?!
-        // Probably crash?
-        panic!("Failed to generate random seed");
-    };
-
-    let mut rng = ChaCha12Rng::from_seed(seed);
-    let rng_str: String = Alphanumeric
-        .sample_iter(&mut rng)
-        .take(length)
-        .map(char::from)
-        .collect();
-
-    rng_str
 }
