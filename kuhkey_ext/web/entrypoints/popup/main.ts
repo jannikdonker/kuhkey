@@ -6,6 +6,8 @@ const MASK = '🐄🐮🐄🐮🐄🐮🐄🐮';
 
 const list = document.querySelector<HTMLElement>('#entries')!;
 const detail = document.querySelector<HTMLElement>('#detail')!;
+const notify = document.querySelector<HTMLElement>('.copy-notify')!;
+const notifyText = notify.querySelector<HTMLElement>('h2')!;
 
 renderList(mockEntries);
 showCow();
@@ -76,7 +78,7 @@ function showEntry(entry: Entry) {
   const card = document.createElement('div');
   card.className = 'field-card';
   card.append(
-    field('Benutzername', entry.username),
+    usernameField(entry.username),
     passwordField(entry.password),
   );
 
@@ -97,11 +99,25 @@ function field(label: string, value: string): HTMLElement {
 
   const valueEl = document.createElement('div');
   valueEl.className = 'field-value';
-  valueEl.textContent = value; 
+  valueEl.textContent = value;
 
   row.append(labelEl, valueEl);
   return row;
 }
+
+let notifyTimer: number | undefined;
+
+function showCopyNotify(text: string) {
+  notifyText.textContent = text;
+  notify.classList.remove('show');
+  void notify.offsetWidth;
+  notify.classList.add('show');
+
+  clearTimeout(notifyTimer);
+  notifyTimer = window.setTimeout(() => notify.classList.remove('show'), 1000);
+}
+
+let clearTimer: number | undefined;
 
 function passwordField(password: string): HTMLElement {
   const row = field('Passwort', MASK);
@@ -116,6 +132,28 @@ function passwordField(password: string): HTMLElement {
   valueEl.addEventListener('mouseleave', hide);
   valueEl.addEventListener('focus', reveal);
   valueEl.addEventListener('blur', hide);
+
+  // bei klick kopiert es und löscht es nach 30 sec wieder
+  valueEl.addEventListener('click', () => {
+    navigator.clipboard.writeText(password);
+    clearTimeout(clearTimer);
+    clearTimer = window.setTimeout(() => navigator.clipboard.writeText(''), 30_000);
+    showCopyNotify('Passwort kopiert!');
+  });
+
+  return row;
+}
+
+function usernameField(username: string): HTMLElement {
+  const row = field('Benutzername', username);
+  const valueEl = row.querySelector<HTMLElement>('.field-value')!;
+  valueEl.classList.add('field-username');
+  valueEl.tabIndex = 0;
+
+  valueEl.addEventListener('click', () => {
+    navigator.clipboard.writeText(username);
+    showCopyNotify('Benutzername kopiert!');
+  });
 
   return row;
 }
