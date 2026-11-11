@@ -1,13 +1,8 @@
 use anyhow::bail;
 use clap::{Parser, Subcommand};
-use rand::{
-    SeedableRng,
-    distr::{Alphanumeric, Distribution},
-    rngs::ChaCha12Rng,
-};
 
 const DEFAULT_PASSWORD_LENGTH: usize = 16;
-pub const MINIMUM_PASSWORD_LENGTH: usize = 8;
+pub const MINIMUM_PASSWORD_LENGTH: usize = 1;
 
 #[derive(Parser)]
 struct Cli {
