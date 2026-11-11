@@ -168,12 +168,23 @@ dependencies = [
 [[package]]
 name = "kuhkey_core"
 version = "0.1.0"
+dependencies = [
+ "argon2",
+ "chacha20poly1305",
+ "rand",
+ "rand_chacha",
+ "rand_core",
+ "serde",
+ "serde_json",
+ "zeroize",
+]
 
 [[package]]
 name = "kuhkey_ext"
 version = "0.1.0"
 dependencies = [
  "kuhkey_core",
+ "wasm-bindgen",
 ]
 
 [[package]]
