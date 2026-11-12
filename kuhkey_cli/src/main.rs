@@ -1,3 +1,5 @@
+use std::{env, ffi::OsString, io::IsTerminal};
+
 use anyhow::bail;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -5,6 +7,7 @@ use kuhkey_core::generator::{PasswordOptions, generate_password};
 
 const DEFAULT_PASSWORD_LENGTH: usize = 16;
 pub const MINIMUM_PASSWORD_LENGTH: usize = 1;
+const ENVIRONMENT_VARIABLE_NAME: &str = "KUHKEY_CLI_KEY";
 
 #[derive(Parser)]
 struct Cli {
@@ -21,13 +24,11 @@ enum Commands {
     Unlock,
 
     /// Add a password:
-    /// Identifier (email, username, domain)
-    /// ?Password?
     Add {
         identifier: String,
 
-        #[arg(long)]
-        gen_p: bool,
+        #[arg(long = "generate", short = 'g')]
+        generate: bool,
     },
 
     /// Generate a new password
@@ -90,17 +91,11 @@ fn main() -> Result<(), anyhow::Error> {
         Commands::Init => {
             println!("Init kuh key")
         }
-        Commands::Unlock => {
-            println!("Unlocking kuh vault")
-        }
-        Commands::Add { identifier, gen_p } => {
-            println!("{identifier}");
-
-            if *gen_p {
-                println!("Generating password for you...");
-                todo!()
-            }
-        }
+        Commands::Unlock => cli_unlock()?,
+        Commands::Add {
+            identifier,
+            generate,
+        } => cli_add_entry(identifier, *generate)?,
         Commands::Gen {
             copy,
             length,
@@ -133,6 +128,59 @@ fn main() -> Result<(), anyhow::Error> {
     }
 
     Ok(())
+}
+
+/// Unlock the kuh key vault by placing an environment variable in the shells process
+///
+/// This function first checks, whether or not the user ran this command directly:
+///
+/// `./kuhkey_cli unlock`
+///
+/// If yes, we bail early because we can not create such an env variable:
+///
+/// By running the command directly, the shell starts a child process where any env var we created
+///
+/// gets destroyed as soon as the command is done executing.
+///
+/// Since we need the env var to stick around as long as the user uses the shell, we need to create it another way:
+///
+/// `eval $(...)`
+///
+/// This runs the `unlock` command as the shell itself and places the env var in the shells memory
+///
+/// Other functions that require the vault to be unlocked can now check for this env var to be sure
+///
+/// the user is authenticated
+///
+/// The environment variable gets destroyed as soon as the user closes the shell
+fn cli_unlock() -> Result<(), anyhow::Error> {
+    // User ran `kuhkey_cli unlock` directly
+    // => Exit the application
+    if std::io::stdout().is_terminal() {
+        eprintln!(
+            "Warning: You ran `kuhkey_cli unlock` directly and the session can not be saved."
+        );
+        eprintln!("Run this instead to unlock your current shell: \n");
+        // TODO: Obviously temporary fix :)
+        eprintln!("   eval $(cargo r --bin kuhkey_cli unlock)");
+        bail!("{}", "Ran unlock command from terminal".red());
+    }
+
+    //TODO: Password/Key logic
+    eprintln!("TODO: Implement password/key logic");
+
+    let session_key = String::from("KUH_KEY_SESSION_KEY");
+    println!("export {}=\"{}\"", ENVIRONMENT_VARIABLE_NAME, session_key);
+
+    eprintln!("KuhKey Vault unlocked, welcome back :)");
+    Ok(())
+}
+
+/// Checks if the kuhkey env var exists
+///
+/// If yes, it contains the value of the env var
+fn check_unlocked() -> Option<OsString> {
+    env::var_os(ENVIRONMENT_VARIABLE_NAME)
 }
 
 fn cli_gen_password(
@@ -194,6 +242,19 @@ fn cli_gen_password(
     } else {
         println!("Your password: \n{}", generated_password)
     }
+
+    Ok(())
+}
+
+fn cli_add_entry(_identifier: &str, _generate_password: bool) -> Result<(), anyhow::Error> {
+    let Some(key) = check_unlocked() else {
+        bail!(
+            "{}",
+            "KuhKey Vault not unlocked! Run `./kuhkey_cli unlock` first!".red()
+        )
+    };
+
+    println!("Key of env var: {key:?}");
 
     Ok(())
 }
