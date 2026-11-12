@@ -179,8 +179,10 @@ fn cli_gen_password(
     };
 
     if copy {
-        match cli_clipboard::set_contents(generated_password) {
-            Ok(_) => println!("{}", "The password is in your clipboard".green()),
+        match terminal_clipboard::set_string(generated_password.clone()) {
+            Ok(_) => {
+                println!("{}", "The password is in your clipboard".green());
+            }
             Err(_) => {
                 println!(
                   "{}",
