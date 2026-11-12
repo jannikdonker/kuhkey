@@ -1,3 +1,7 @@
+#![allow(dead_code)]
+#![allow(unused)]
+#![allow(private_interfaces)]
+
 use chacha20poly1305::{
     ChaCha20Poly1305, ChaChaPoly1305, XChaCha20Poly1305, aead::common::getrandom,
 };
