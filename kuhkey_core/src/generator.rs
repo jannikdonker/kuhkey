@@ -44,6 +44,18 @@ fn generate_random_seed() -> Result<[u8; 32], getrandom::Error> {
 }
 
 pub fn generate_password(opts: &PasswordOptions) -> Result<String, Error> {
+    // Validate that the length fits all requirements
+    let min_len = [opts.uppercase, opts.lowercase, opts.numbers, opts.symbols]
+        .into_iter()
+        .filter(|&enabled| enabled)
+        .count();
+    if opts.length < min_len {
+        return Err(Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "password length is smaller than the number of required character classes",
+        ));
+    }
+
     let seed = generate_random_seed()?;
     let mut rng = ChaCha12Rng::from_seed(seed);
 
@@ -87,6 +99,7 @@ pub fn generate_password(opts: &PasswordOptions) -> Result<String, Error> {
         if password_has_reqs(&pw, opts) {
             return Ok(pw);
         }
+        pw.clear();
     }
 }
 
