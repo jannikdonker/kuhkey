@@ -1,14 +1,8 @@
-use std::{
-    env,
-    ffi::OsString,
-    io::IsTerminal,
-    process::{Command, Stdio},
-    thread,
-    time::Duration,
-};
+use std::{env, ffi::OsString, io::IsTerminal};
 
 use anyhow::bail;
 use clap::{Parser, Subcommand};
+use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use colored::Colorize;
 use kuhkey_core::generator::{PasswordOptions, generate_password};
 
@@ -92,20 +86,12 @@ enum Commands {
 }
 
 fn main() -> Result<(), anyhow::Error> {
-    let args: Vec<String> = env::args().collect();
-
-    // If the programm has been started with the --clear-clipboard flag
-    // Wait 30 seconds before clearing the clipboard
-    //
-    // Look at `cli_gen_password` and `spawn_clipboard_clear_process` for more info
-    if args.contains(&"--clear-clipboard".to_string()) {
-        thread::sleep(Duration::from_secs(5));
-
-        terminal_clipboard::set_string("...").unwrap();
-        return Ok(());
-    }
-
     let cli = Cli::parse();
+    // Create the clipoard in the main function and pass it to all other commands
+    // so we can clear it later
+    //
+    // TODO: I still have not found a good way to do this acroess process...
+    let mut clipboard = ClipboardContext::new().expect("Failed to create a new clipboard");
 
     match &cli.commands {
         Commands::Init => {
@@ -137,6 +123,7 @@ fn main() -> Result<(), anyhow::Error> {
                 *symbols,
                 *exclude_lookalikes,
                 *all_params,
+                &mut clipboard,
             )?
         }
         Commands::Get { identifier, copy } => {
@@ -203,7 +190,8 @@ fn check_unlocked() -> Option<OsString> {
     env::var_os(ENVIRONMENT_VARIABLE_NAME)
 }
 
-fn cli_gen_password(
+// The generic parameter is necessary as T will be a WindowsClipboard on Windows or a MacClipboard on Mac...
+fn cli_gen_password<T>(
     copy: bool,
     length: usize,
     no_uppercase: bool,
@@ -212,7 +200,11 @@ fn cli_gen_password(
     symbols: bool,
     exclude_lookalikes: bool,
     all_params: bool,
-) -> Result<(), anyhow::Error> {
+    clipboard: &mut T,
+) -> Result<(), anyhow::Error>
+where
+    T: ClipboardProvider,
+{
     if length < MINIMUM_PASSWORD_LENGTH {
         let err = format!("InvalidPassword - Expected a minimum password length of {MINIMUM_PASSWORD_LENGTH}, found {length}").red();
         bail!(err)
@@ -247,10 +239,9 @@ fn cli_gen_password(
     };
 
     if copy {
-        match terminal_clipboard::set_string(generated_password.clone()) {
+        match clipboard.set_contents(generated_password.clone()) {
             Ok(_) => {
                 println!("{}", "The password is in your clipboard".green());
-                spawn_clipboard_clear_process();
             }
             Err(_) => {
                 println!(
@@ -278,28 +269,4 @@ fn cli_add_entry(_identifier: &str, _generate_password: bool) -> Result<(), anyh
     println!("Key of env var: {key:?}");
 
     Ok(())
-}
-
-/// Runs the programm again but with the `--clear-clipboard flag`
-///
-/// In `main` we check for this argument and clear the clipboard before clap parses anything
-fn spawn_clipboard_clear_process() {
-    let current_exe = env::current_exe().expect("Failed to get current exe path");
-    let mut cmd = Command::new(current_exe);
-    cmd.arg("--clear-clipboard")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-
-    // On Windows, prevent a new console window from popping up
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExit;
-        // AI Slop Number
-        const DETACHED_PROCESS: u32 = 0x00000008;
-        cmd.creation_flags(DETACHED_PROCESS);
-    }
-
-    cmd.spawn()
-        .expect("Failed to spawn `clear-clipboard` process");
 }
