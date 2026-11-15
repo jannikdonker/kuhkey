@@ -1,8 +1,9 @@
-use std::{char, io::Error};
+use std::char;
 
 use chacha20poly1305::aead::common::getrandom;
 use rand::Rng;
 use rand_chacha::{ChaCha12Rng, rand_core::SeedableRng};
+use anyhow::{Result, bail};
 
 pub const UPPERCASE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 pub const LOWERCASE: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
@@ -37,23 +38,20 @@ impl Default for PasswordOptions {
     }
 }
 
-fn generate_random_seed() -> Result<[u8; 32], getrandom::Error> {
+fn generate_random_seed() -> Result<[u8; 32]> {
     let mut buf = [0u8; 32];
     getrandom::fill(&mut buf)?;
     Ok(buf)
 }
 
-pub fn generate_password(opts: &PasswordOptions) -> Result<String, Error> {
+pub fn generate_password(opts: &PasswordOptions) -> Result<String> {
     // Validate that the length fits all requirements
     let min_len = [opts.uppercase, opts.lowercase, opts.numbers, opts.symbols]
         .into_iter()
         .filter(|&enabled| enabled)
         .count();
     if opts.length < min_len {
-        return Err(Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "password length is smaller than the number of required character classes",
-        ));
+        bail!("password length is smaller than the number of required character classes")
     }
 
     let seed = generate_random_seed()?;
@@ -78,8 +76,7 @@ pub fn generate_password(opts: &PasswordOptions) -> Result<String, Error> {
     };
 
     if charset.is_empty() {
-        panic!()
-        // TODO: impl error type
+        bail!("charset is empty")
     };
 
     let mut pw = String::with_capacity(opts.length);
