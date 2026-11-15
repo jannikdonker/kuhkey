@@ -1,5 +1,5 @@
 use kuhkey_core;
 
 fn main() {
-    kuhkey_core::say_hello();
+    println!("Hello Kuh!");
 }
