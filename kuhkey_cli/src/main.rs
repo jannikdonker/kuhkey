@@ -1,4 +1,11 @@
-use std::{env, ffi::OsString, io::IsTerminal};
+use std::{
+    env,
+    ffi::OsString,
+    io::IsTerminal,
+    process::{Command, Stdio},
+    thread,
+    time::Duration,
+};
 
 use anyhow::bail;
 use clap::{Parser, Subcommand};
@@ -85,6 +92,19 @@ enum Commands {
 }
 
 fn main() -> Result<(), anyhow::Error> {
+    let args: Vec<String> = env::args().collect();
+
+    // If the programm has been started with the --clear-clipboard flag
+    // Wait 30 seconds before clearing the clipboard
+    //
+    // Look at `cli_gen_password` and `spawn_clipboard_clear_process` for more info
+    if args.contains(&"--clear-clipboard".to_string()) {
+        thread::sleep(Duration::from_secs(5));
+
+        terminal_clipboard::set_string("...").unwrap();
+        return Ok(());
+    }
+
     let cli = Cli::parse();
 
     match &cli.commands {
@@ -230,6 +250,7 @@ fn cli_gen_password(
         match terminal_clipboard::set_string(generated_password.clone()) {
             Ok(_) => {
                 println!("{}", "The password is in your clipboard".green());
+                spawn_clipboard_clear_process();
             }
             Err(_) => {
                 println!(
@@ -257,4 +278,28 @@ fn cli_add_entry(_identifier: &str, _generate_password: bool) -> Result<(), anyh
     println!("Key of env var: {key:?}");
 
     Ok(())
+}
+
+/// Runs the programm again but with the `--clear-clipboard flag`
+///
+/// In `main` we check for this argument and clear the clipboard before clap parses anything
+fn spawn_clipboard_clear_process() {
+    let current_exe = env::current_exe().expect("Failed to get current exe path");
+    let mut cmd = Command::new(current_exe);
+    cmd.arg("--clear-clipboard")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    // On Windows, prevent a new console window from popping up
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExit;
+        // AI Slop Number
+        const DETACHED_PROCESS: u32 = 0x00000008;
+        cmd.creation_flags(DETACHED_PROCESS);
+    }
+
+    cmd.spawn()
+        .expect("Failed to spawn `clear-clipboard` process");
 }
