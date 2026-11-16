@@ -62,8 +62,7 @@ enum Commands {
         #[arg(long = "no-alikes")]
         exclude_lookalikes: bool,
 
-        /// Includes each of the flags above
-        /// Also ignores any other flags except the `no-upper` / `no-lower` ones
+        /// Same as `--numbers --symbols`, ignores `--no-alikes` if set by the user
         #[arg(long = "all")]
         all_params: bool,
     },
@@ -91,7 +90,7 @@ fn main() -> anyhow::Result<()> {
     // so we can clear it later
     //
     // TODO: I still have not found a good way to do this acroess process...
-    let mut clipboard = ClipboardContext::new().expect("Failed to create a new clipboard");
+    let mut clipboard = ClipboardContext::new().ok();
 
     match &cli.commands {
         Commands::Init => {
@@ -123,7 +122,7 @@ fn main() -> anyhow::Result<()> {
                 *symbols,
                 *exclude_lookalikes,
                 *all_params,
-                &mut clipboard,
+                clipboard.as_mut(),
             )?
         }
         Commands::Get { identifier, copy } => {
@@ -200,7 +199,7 @@ fn cli_gen_password<T>(
     symbols: bool,
     exclude_lookalikes: bool,
     all_params: bool,
-    clipboard: &mut T,
+    clipboard: Option<&mut T>,
 ) -> Result<(), anyhow::Error>
 where
     T: ClipboardProvider,
@@ -238,8 +237,9 @@ where
         bail!("Unable to generate password");
     };
 
-    if copy {
-        match clipboard.set_contents(generated_password.clone()) {
+    if copy && clipboard.is_some() {
+        // Unwrap here is safe because we know from the check above that clipboard is some
+        match clipboard.unwrap().set_contents(generated_password.clone()) {
             Ok(_) => {
                 println!("{}", "The password is in your clipboard".green());
             }
@@ -252,6 +252,11 @@ where
             }
         }
     } else {
+        // Check if we landed here because the clipboard failed
+        if copy {
+            println!("It looks like KuhKey was unable to put the password into your clipboard");
+        }
+
         println!("Your password: \n{}", generated_password)
     }
 
