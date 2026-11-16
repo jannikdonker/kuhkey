@@ -85,7 +85,7 @@ enum Commands {
     },
 }
 
-fn main() -> Result<(), anyhow::Error> {
+fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     // Create the clipoard in the main function and pass it to all other commands
     // so we can clear it later
@@ -160,7 +160,7 @@ fn main() -> Result<(), anyhow::Error> {
 /// the user is authenticated
 ///
 /// The environment variable gets destroyed as soon as the user closes the shell
-fn cli_unlock() -> Result<(), anyhow::Error> {
+fn cli_unlock() -> anyhow::Result<()> {
     // User ran `kuhkey_cli unlock` directly
     // => Exit the application
     if std::io::stdout().is_terminal() {
@@ -258,7 +258,7 @@ where
     Ok(())
 }
 
-fn cli_add_entry(_identifier: &str, _generate_password: bool) -> Result<(), anyhow::Error> {
+fn cli_add_entry(_identifier: &str, _generate_password: bool) -> anyhow::Result<()> {
     let Some(key) = check_unlocked() else {
         bail!(
             "{}",
