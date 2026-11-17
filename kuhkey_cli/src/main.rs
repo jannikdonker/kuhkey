@@ -35,36 +35,32 @@ enum Commands {
     /// Generate a new password
     Gen {
         /// Put the password into the users clipboard after generating
-        #[arg(long = "copy")]
+        #[arg(long = "copy", short = 'c')]
         copy: bool,
 
         /// The length of the password
         #[arg(long = "len")]
         length: Option<usize>,
 
-        /// Don't include upper case characters
-        #[arg(long = "no-upper")]
-        no_uppercase: bool,
+        /// Include uppercase characters
+        #[arg(long = "upper", short = 'u')]
+        uppercase: bool,
 
-        /// Dont't include lower case characters
-        #[arg(long = "no-lower")]
-        no_lowercase: bool,
+        /// Include lowercase characters
+        #[arg(long = "lower", short = 'l')]
+        lowercase: bool,
 
         /// Include numbers
-        #[arg(long = "numbers")]
+        #[arg(long = "numbers", short = 'n')]
         numbers: bool,
 
         /// Include symbols
-        #[arg(long = "symbols")]
+        #[arg(long = "symbols", short = 's')]
         symbols: bool,
 
         /// Exclude look alikes
         #[arg(long = "no-alikes")]
         exclude_lookalikes: bool,
-
-        /// Same as `--numbers --symbols`, ignores `--no-alikes` if set by the user
-        #[arg(long = "all")]
-        all_params: bool,
     },
 
     /// Get the password for a given identifier
@@ -99,24 +95,22 @@ fn main() -> anyhow::Result<()> {
         Commands::Gen {
             copy,
             length,
-            no_uppercase,
-            no_lowercase,
+            uppercase,
+            lowercase,
             numbers,
             symbols,
             exclude_lookalikes,
-            all_params,
         } => {
             let length = length.unwrap_or(DEFAULT_PASSWORD_LENGTH);
 
             cli_gen_password(
                 *copy,
                 length,
-                *no_uppercase,
-                *no_lowercase,
+                *uppercase,
+                *lowercase,
                 *numbers,
                 *symbols,
                 *exclude_lookalikes,
-                *all_params,
             )?
         }
         Commands::Get { identifier, copy } => {
@@ -187,47 +181,49 @@ fn check_unlocked() -> Option<OsString> {
 fn cli_gen_password(
     copy: bool,
     length: usize,
-    no_uppercase: bool,
-    no_lowercase: bool,
+    uppercase: bool,
+    lowercase: bool,
     numbers: bool,
     symbols: bool,
     exclude_lookalikes: bool,
-    all_params: bool,
 ) -> Result<(), anyhow::Error> {
     if length < MINIMUM_PASSWORD_LENGTH {
         let err = format!("InvalidPassword - Expected a minimum password length of {MINIMUM_PASSWORD_LENGTH}, found {length}").red();
         bail!(err)
     }
 
-    if no_lowercase && no_uppercase {
-        let err = "Can not set `no-upper` and `no-lower` flag at the same time".red();
-        bail!("{err}");
-    }
+    // Has the user supplied any options?
+    let user_options = [uppercase, lowercase, numbers, symbols, exclude_lookalikes]
+        .iter()
+        .any(|&b| b);
 
     // TODO: Figure out how to clear the clipboard later
     let clipboard = cli_clipboard::ClipboardContext::new().ok();
 
-    let mut options = PasswordOptions {
-        length,
-        // When --no-upper / --no-lower is set, we need to tell the generator, NOT to use them
-        // --no-uper (true) => uppercase (false)
-        uppercase: !no_uppercase,
-        lowercase: !no_lowercase,
-        numbers: numbers,
-        symbols: symbols,
-        exclude_lookalikes: exclude_lookalikes,
+    let options = if user_options {
+        PasswordOptions {
+            length,
+            uppercase: uppercase,
+            lowercase: lowercase,
+            numbers: numbers,
+            symbols: symbols,
+            exclude_lookalikes: exclude_lookalikes,
+        }
+    } else {
+        PasswordOptions {
+            length,
+            ..Default::default()
+        }
     };
-
-    if all_params {
-        options.exclude_lookalikes = false;
-        options.numbers = true;
-        options.symbols = true;
-    }
 
     let password = generate_password(&options);
 
-    let Ok(generated_password) = password else {
-        bail!("Unable to generate password");
+    let generated_password = match password {
+        Ok(p) => p,
+        Err(err) => {
+            println!("{:?}", err);
+            bail!("Unable to generate password");
+        }
     };
 
     if copy && clipboard.is_some() {
@@ -323,22 +319,26 @@ mod tests {
 
     #[test]
     fn cli_gen_succeeds() {
-        assert!(cli_gen_password(false, 16, false, false, true, true, false, false).is_ok());
+        assert!(cli_gen_password(false, 16, false, false, true, true, false).is_ok());
     }
 
     #[test]
     fn cli_gen_zero_length_fails() {
-        assert!(cli_gen_password(false, 0, false, false, false, false, false, false).is_err());
+        assert!(cli_gen_password(false, 0, false, false, false, false, false).is_err());
     }
 
     #[test]
     fn cli_gen_no_upper_and_no_lower_fails() {
-        assert!(cli_gen_password(false, 16, true, true, true, true, false, false).is_err());
+        assert!(cli_gen_password(false, 16, false, false, false, false, false).is_ok());
     }
 
     #[test]
     fn cli_gen_too_short_for_classes_fails() {
-        // upper + lower are on by default, so len 1 can't fit both
-        assert!(cli_gen_password(false, 1, false, false, false, false, false, false).is_err());
+        assert!(cli_gen_password(false, 1, false, false, false, false, false).is_err());
+    }
+
+    #[test]
+    fn cli_gen_password_length_one() {
+        assert!(cli_gen_password(false, 1, true, false, false, false, false).is_ok());
     }
 }
