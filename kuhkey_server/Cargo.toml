@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 axum = "0.8.9"
 reqwest = { version = "0.13.5", features = ["json"] }
+rusqlite = "0.43.0"
 serde = { version = "1.0.229", features = ["derive"] }
 tokio = { version = "1.54.1", features = ["full"] }
 tracing = "0.1.44"

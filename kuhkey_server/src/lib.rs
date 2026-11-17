@@ -1,41 +1,64 @@
-use axum::{
-    Json, Router,
-    routing::{get, post},
-};
+use axum::{Json, Router, extract::State, routing::post};
+use reqwest::StatusCode;
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use std::{
+    net::SocketAddr,
+    sync::{Arc, Mutex},
+};
 
-#[derive(Serialize)]
-struct Pong {
-    status: &'static str,
-    version: &'static str,
+#[derive(Clone)]
+struct AppState {
+    connection: Arc<Mutex<Connection>>,
 }
 
-#[derive(Deserialize, Serialize)]
-struct EchoMessage {
-    message: String,
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UserAccount {
+    pub id: usize,
+    pub name: String,
 }
 
-async fn ping() -> Json<Pong> {
-    Json(Pong {
-        status: "ok",
-        version: env!("CARGO_PKG_VERSION"),
-    })
+/// POST /api/v1/create_user
+async fn db_create_user(
+    State(state): State<AppState>,
+    Json(user_account): Json<UserAccount>,
+) -> StatusCode {
+    let conn = state.connection.lock().unwrap();
+    conn.execute("INSERT INTO user (name) VALUES (?1)", (&user_account.name,))
+        .unwrap();
+
+    StatusCode::CREATED
 }
 
-/// POST /api/v1/echo {"message":"hi"} -> {"message":"hi"}
-async fn echo(Json(body): Json<EchoMessage>) -> Json<EchoMessage> {
-    tracing::info!("echo request received");
-    Json(body)
+/// POST /api/v1/create_tables
+async fn db_create_tables(State(state): State<AppState>) -> StatusCode {
+    let conn = state.connection.lock().unwrap();
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS user (
+            id    INTEGER PRIMARY KEY,
+            name  TEXT NOT NULL
+        )",
+        (),
+    )
+    // Terrible
+    .unwrap();
+
+    StatusCode::CREATED
 }
 
-fn app() -> Router {
+fn app(conn: Connection) -> Router {
+    let state = AppState {
+        connection: Arc::new(Mutex::new(conn)),
+    };
     Router::new()
-        .route("/api/v1/ping", get(ping))
-        .route("/api/v1/echo", post(echo))
+        .route("/api/v1/create_tables", post(db_create_tables))
+        .route("/api/v1/create_user", post(db_create_user))
+        .with_state(state)
 }
 
-pub async fn start_server() -> Result<(), std::io::Error> {
+pub async fn start_server() -> rusqlite::Result<()> {
+    let connection = Connection::open("kuhkey_server.db")?;
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
@@ -49,7 +72,9 @@ pub async fn start_server() -> Result<(), std::io::Error> {
         .expect("failed to bind port 8080");
 
     tracing::info!("KuhKey server listening on http://{addr}");
-    axum::serve(listener, app()).await.expect("server error");
+    axum::serve(listener, app(connection))
+        .await
+        .expect("server error");
 
     Ok(())
 }
