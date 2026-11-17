@@ -5,6 +5,10 @@ use clap::{Parser, Subcommand};
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use colored::Colorize;
 use kuhkey_core::generator::{PasswordOptions, generate_password};
+use std::{
+    io::Write,
+    process::{Command, Stdio},
+};
 
 const DEFAULT_PASSWORD_LENGTH: usize = 16;
 pub const MINIMUM_PASSWORD_LENGTH: usize = 1;
@@ -272,11 +276,6 @@ fn copy_to_clipboard(text: &str) -> anyhow::Result<()> {
     ];
 
     for (bin, args) in candidates {
-        use std::{
-            io::Write,
-            process::{Command, Stdio},
-        };
-
         let Ok(mut child) = Command::new(bin)
             .args(*args)
             .stdin(Stdio::piped())
