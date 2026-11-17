@@ -287,7 +287,11 @@ fn copy_to_clipboard(text: &str) -> anyhow::Result<()> {
             continue; // binary not installed, try next
         };
 
-        child.stdin.take().unwrap().write_all(text.as_bytes())?;
+        match child.stdin.take() {
+            Some(mut s) => s.write_all(text.as_bytes())?,
+            None => bail!("Could not write to child stdin")
+        }
+
         // Don't wait(): the tool forks/stays alive to serve the selection
         return Ok(());
     }
