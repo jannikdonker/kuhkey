@@ -1,10 +1,14 @@
+use std::{env, ffi::OsString, io::IsTerminal};
+
 use anyhow::bail;
 use clap::{Parser, Subcommand};
+use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use colored::Colorize;
 use kuhkey_core::generator::{PasswordOptions, generate_password};
 
 const DEFAULT_PASSWORD_LENGTH: usize = 16;
 pub const MINIMUM_PASSWORD_LENGTH: usize = 1;
+const ENVIRONMENT_VARIABLE_NAME: &str = "KUHKEY_CLI_KEY";
 
 #[derive(Parser)]
 struct Cli {
@@ -21,21 +25,14 @@ enum Commands {
     Unlock,
 
     /// Add a password:
-    /// Identifier (email, username, domain)
-    /// ?Password?
     Add {
         identifier: String,
 
-        #[arg(long)]
-        gen_p: bool,
+        #[arg(long = "generate", short = 'g')]
+        generate: bool,
     },
 
     /// Generate a new password
-    ///
-    /// This accepts an optional length which when set
-    /// is the length of the password
-    ///
-    /// If this is not set, the default password will be `16` characters long
     Gen {
         /// Put the password into the users clipboard after generating
         #[arg(long = "copy")]
@@ -64,6 +61,10 @@ enum Commands {
         /// Exclude look alikes
         #[arg(long = "no-alikes")]
         exclude_lookalikes: bool,
+
+        /// Same as `--numbers --symbols`, ignores `--no-alikes` if set by the user
+        #[arg(long = "all")]
+        all_params: bool,
     },
 
     /// Get the password for a given identifier
@@ -83,24 +84,18 @@ enum Commands {
     },
 }
 
-fn main() -> Result<(), anyhow::Error> {
+fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match &cli.commands {
         Commands::Init => {
             println!("Init kuh key")
         }
-        Commands::Unlock => {
-            println!("Unlocking kuh vault")
-        }
-        Commands::Add { identifier, gen_p } => {
-            println!("{identifier}");
-
-            if *gen_p {
-                println!("Generating password for you...");
-                todo!()
-            }
-        }
+        Commands::Unlock => cli_unlock()?,
+        Commands::Add {
+            identifier,
+            generate,
+        } => cli_add_entry(identifier, *generate)?,
         Commands::Gen {
             copy,
             length,
@@ -109,6 +104,7 @@ fn main() -> Result<(), anyhow::Error> {
             numbers,
             symbols,
             exclude_lookalikes,
+            all_params,
         } => {
             let length = length.unwrap_or(DEFAULT_PASSWORD_LENGTH);
 
@@ -120,6 +116,7 @@ fn main() -> Result<(), anyhow::Error> {
                 *numbers,
                 *symbols,
                 *exclude_lookalikes,
+                *all_params,
             )?
         }
         Commands::Get { identifier, copy } => {
@@ -133,6 +130,60 @@ fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Unlock the kuh key vault by placing an environment variable in the shells process
+///
+/// This function first checks, whether or not the user ran this command directly:
+///
+/// `./kuhkey_cli unlock`
+///
+/// If yes, we bail early because we can not create such an env variable:
+///
+/// By running the command directly, the shell starts a child process where any env var we created
+///
+/// gets destroyed as soon as the command is done executing.
+///
+/// Since we need the env var to stick around as long as the user uses the shell, we need to create it another way:
+///
+/// `eval $(...)`
+///
+/// This runs the `unlock` command as the shell itself and places the env var in the shells memory
+///
+/// Other functions that require the vault to be unlocked can now check for this env var to be sure
+///
+/// the user is authenticated
+///
+/// The environment variable gets destroyed as soon as the user closes the shell
+fn cli_unlock() -> anyhow::Result<()> {
+    // User ran `kuhkey_cli unlock` directly
+    // => Exit the application
+    if std::io::stdout().is_terminal() {
+        eprintln!(
+            "Warning: You ran `kuhkey_cli unlock` directly and the session can not be saved."
+        );
+        eprintln!("Run this instead to unlock your current shell: \n");
+        // TODO: Obviously temporary fix :)
+        eprintln!("   eval $(cargo r --bin kuhkey_cli unlock)");
+        bail!("{}", "Ran unlock command from terminal".red());
+    }
+
+    //TODO: Password/Key logic
+    eprintln!("TODO: Implement password/key logic");
+
+    let session_key = String::from("KUH_KEY_SESSION_KEY");
+    println!("export {}=\"{}\"", ENVIRONMENT_VARIABLE_NAME, session_key);
+
+    eprintln!("KuhKey Vault unlocked, welcome back :)");
+    Ok(())
+}
+
+/// Checks if the kuhkey env var exists
+///
+/// If yes, it contains the value of the env var
+fn check_unlocked() -> Option<OsString> {
+    env::var_os(ENVIRONMENT_VARIABLE_NAME)
+}
+
+// The generic parameter is necessary as T will be a WindowsClipboard on Windows or a MacClipboard on Mac...
 fn cli_gen_password(
     copy: bool,
     length: usize,
@@ -141,6 +192,7 @@ fn cli_gen_password(
     numbers: bool,
     symbols: bool,
     exclude_lookalikes: bool,
+    all_params: bool,
 ) -> Result<(), anyhow::Error> {
     if length < MINIMUM_PASSWORD_LENGTH {
         let err = format!("InvalidPassword - Expected a minimum password length of {MINIMUM_PASSWORD_LENGTH}, found {length}").red();
@@ -152,7 +204,10 @@ fn cli_gen_password(
         bail!("{err}");
     }
 
-    let options = PasswordOptions {
+    // TODO: Figure out how to clear the clipboard later
+    let clipboard = cli_clipboard::ClipboardContext::new().ok();
+
+    let mut options = PasswordOptions {
         length,
         // When --no-upper / --no-lower is set, we need to tell the generator, NOT to use them
         // --no-uper (true) => uppercase (false)
@@ -163,15 +218,24 @@ fn cli_gen_password(
         exclude_lookalikes: exclude_lookalikes,
     };
 
+    if all_params {
+        options.exclude_lookalikes = false;
+        options.numbers = true;
+        options.symbols = true;
+    }
+
     let password = generate_password(&options);
 
     let Ok(generated_password) = password else {
         bail!("Unable to generate password");
     };
 
-    if copy {
-        match cli_clipboard::set_contents(generated_password) {
-            Ok(_) => println!("{}", "The password is in your clipboard".green()),
+    if copy && clipboard.is_some() {
+        // Unwrap here is safe because we know from the check above that clipboard is some
+        match clipboard.unwrap().set_contents(generated_password.clone()) {
+            Ok(_) => {
+                println!("{}", "The password is in your clipboard".green());
+            }
             Err(_) => {
                 println!(
                   "{}",
@@ -181,12 +245,29 @@ fn cli_gen_password(
             }
         }
     } else {
+        // Check if we landed here because the clipboard failed
+        if copy {
+            println!("It looks like KuhKey was unable to put the password into your clipboard");
+        }
+
         println!("Your password: \n{}", generated_password)
     }
 
     Ok(())
 }
 
+fn cli_add_entry(_identifier: &str, _generate_password: bool) -> anyhow::Result<()> {
+    let Some(key) = check_unlocked() else {
+        bail!(
+            "{}",
+            "KuhKey Vault not unlocked! Run `./kuhkey_cli unlock` first!".red()
+        )
+    };
+
+    println!("Key of env var: {key:?}");
+
+    Ok(())
+}
 #[cfg(test)]
 mod tests {
     use crate::{Cli, cli_gen_password};
@@ -200,22 +281,22 @@ mod tests {
 
     #[test]
     fn cli_gen_succeeds() {
-        assert!(cli_gen_password(false, 16, false, false, true, true, false).is_ok());
+        assert!(cli_gen_password(false, 16, false, false, true, true, false, false).is_ok());
     }
 
     #[test]
     fn cli_gen_zero_length_fails() {
-        assert!(cli_gen_password(false, 0, false, false, false, false, false).is_err());
+        assert!(cli_gen_password(false, 0, false, false, false, false, false, false).is_err());
     }
 
     #[test]
     fn cli_gen_no_upper_and_no_lower_fails() {
-        assert!(cli_gen_password(false, 16, true, true, true, true, false).is_err());
+        assert!(cli_gen_password(false, 16, true, true, true, true, false, false).is_err());
     }
 
     #[test]
     fn cli_gen_too_short_for_classes_fails() {
         // upper + lower are on by default, so len 1 can't fit both
-        assert!(cli_gen_password(false, 1, false, false, false, false, false).is_err());
+        assert!(cli_gen_password(false, 1, false, false, false, false, false, false).is_err());
     }
 }
