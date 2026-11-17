@@ -484,6 +484,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "kuhkey_desktop"
+version = "0.1.0"
+
+[[package]]
 name = "kuhkey_ext"
 version = "0.1.0"
 dependencies = [
