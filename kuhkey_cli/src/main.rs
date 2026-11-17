@@ -2,7 +2,7 @@ use std::{env, ffi::OsString, io::IsTerminal};
 
 use anyhow::bail;
 use clap::{Parser, Subcommand};
-use cli_clipboard::{ClipboardContext, ClipboardProvider};
+use cli_clipboard::ClipboardProvider;
 use colored::Colorize;
 use kuhkey_core::generator::{PasswordOptions, generate_password};
 
@@ -289,7 +289,7 @@ fn copy_to_clipboard(text: &str) -> anyhow::Result<()> {
 
         match child.stdin.take() {
             Some(mut s) => s.write_all(text.as_bytes())?,
-            None => bail!("Could not write to child stdin")
+            None => bail!("Could not write to child stdin"),
         }
 
         // Don't wait(): the tool forks/stays alive to serve the selection
