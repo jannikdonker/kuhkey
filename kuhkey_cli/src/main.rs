@@ -232,7 +232,13 @@ fn cli_gen_password(
 
     if copy && clipboard.is_some() {
         // Unwrap here is safe because we know from the check above that clipboard is some
-        match clipboard.unwrap().set_contents(generated_password.clone()) {
+        #[cfg(not(target_os = "linux"))]
+        let res = clipboard.unwrap().set_contents(generated_password.clone());
+
+        #[cfg(target_os = "linux")]
+        let res = copy_to_clipboard(&generated_password);
+
+        match res {
             Ok(_) => {
                 println!("{}", "The password is in your clipboard".green());
             }
@@ -254,6 +260,38 @@ fn cli_gen_password(
     }
 
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn copy_to_clipboard(text: &str) -> anyhow::Result<()> {
+    // Try Wayland first, then X11 fallbacks
+    let candidates: &[(&str, &[&str])] = &[
+        ("wl-copy", &[]),
+        ("xclip", &["-selection", "clipboard"]),
+        ("xsel", &["--clipboard", "--input"]),
+    ];
+
+    for (bin, args) in candidates {
+        use std::{
+            io::Write,
+            process::{Command, Stdio},
+        };
+
+        let Ok(mut child) = Command::new(bin)
+            .args(*args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        else {
+            continue; // binary not installed, try next
+        };
+
+        child.stdin.take().unwrap().write_all(text.as_bytes())?;
+        // Don't wait(): the tool forks/stays alive to serve the selection
+        return Ok(());
+    }
+    anyhow::bail!("No clipboard tool found (install wl-clipboard, xclip or xsel)")
 }
 
 fn cli_add_entry(_identifier: &str, _generate_password: bool) -> anyhow::Result<()> {
