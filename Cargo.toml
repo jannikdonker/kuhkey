@@ -3,4 +3,4 @@ resolver = "3"
 members = [
   "kuhkey_cli",
   "kuhkey_core"
-, "kuhkey_desktop", "kuhkey_ext", "kuhkey_ui"]
+, "kuhkey_desktop", "kuhkey_ext", "kuhkey_ttt", "kuhkey_ui"]

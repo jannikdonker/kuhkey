@@ -5,6 +5,7 @@ use clap::{Parser, Subcommand};
 use cli_clipboard::ClipboardProvider;
 use colored::Colorize;
 use kuhkey_core::generator::{PasswordOptions, generate_password};
+use kuhkey_ttt::{History, lookup_location};
 
 const DEFAULT_PASSWORD_LENGTH: usize = 16;
 pub const MINIMUM_PASSWORD_LENGTH: usize = 1;
@@ -163,10 +164,38 @@ fn cli_unlock() -> anyhow::Result<()> {
     //TODO: Password/Key logic
     eprintln!("TODO: Implement password/key logic");
 
+    // only after the master psw was right
+    cli_location_check()?;
+
     let session_key = String::from("KUH_KEY_SESSION_KEY");
     println!("export {}=\"{}\"", ENVIRONMENT_VARIABLE_NAME, session_key);
 
     eprintln!("KuhKey Vault unlocked, welcome back :)");
+    Ok(())
+}
+
+// checks where the login comes from, new country => 2fa
+// everything goes to eprintln! bc unlocks stdout gets evaled by the shell
+fn cli_location_check() -> anyhow::Result<()> {
+    // offline or ipinfo is down we just skip it
+    let (Ok(location), Ok(mut history)) = (lookup_location(), History::load()) else {
+        eprintln!("{}", "Warning: location check skipped".yellow());
+        return Ok(());
+    };
+
+    if history.needs_2fa(&location.country) {
+        eprintln!("New login country: {}", location.country);
+        eprintln!("{}", "2FA required".red());
+        // TODO: ask for the totp code here (totp-rs) and only go on if it was right
+        bail!("2FA is not implemented yet");
+    }
+
+    // only record accepted logins, a failed one from russia shouldnt add russia to the list
+    history.record(&location);
+    if history.save().is_err() {
+        eprintln!("{}", "Warning: could not save login history".yellow());
+    }
+
     Ok(())
 }
 
