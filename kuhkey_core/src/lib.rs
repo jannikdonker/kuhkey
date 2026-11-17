@@ -108,7 +108,7 @@ impl KdfParams {
     }
 }
 
-// Bytes: 4 + 4 + 24 + 12 + 12 = 56
+// Bytes: 4 + 4 + 24 + 16 + 12 = 60
 struct VaultHeader {
     magic: [u8; 4],
     version: u32,
