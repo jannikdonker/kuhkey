@@ -5,10 +5,6 @@ use clap::{Parser, Subcommand};
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use colored::Colorize;
 use kuhkey_core::generator::{PasswordOptions, generate_password};
-use std::{
-    io::Write,
-    process::{Command, Stdio},
-};
 
 const DEFAULT_PASSWORD_LENGTH: usize = 16;
 pub const MINIMUM_PASSWORD_LENGTH: usize = 1;
@@ -268,6 +264,11 @@ fn cli_gen_password(
 
 #[cfg(target_os = "linux")]
 fn copy_to_clipboard(text: &str) -> anyhow::Result<()> {
+    use std::{
+        io::Write,
+        process::{Command, Stdio},
+    };
+
     // Try Wayland first, then X11 fallbacks
     let candidates: &[(&str, &[&str])] = &[
         ("wl-copy", &[]),
