@@ -139,7 +139,28 @@ fn password_has_reqs(pw: &str, opts: &PasswordOptions) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::generator::{PasswordOptions, generate_password, generate_random_seed};
+    use crate::generator::{
+        LOOKALIKES, LOWERCASE, NUMBERS, PasswordOptions, SYMBOLS, UPPERCASE, generate_password,
+        generate_random_seed, password_has_reqs,
+    };
+
+    // gen is random, so run each check a bunch of times
+    const RUNS: usize = 100;
+
+    fn has_any(pw: &str, set: &[u8]) -> bool {
+        pw.bytes().any(|c| set.contains(&c))
+    }
+
+    fn only_class(upper: bool, lower: bool, numbers: bool, symbols: bool) -> PasswordOptions {
+        PasswordOptions {
+            length: 20,
+            uppercase: upper,
+            lowercase: lower,
+            numbers,
+            symbols,
+            exclude_lookalikes: false,
+        }
+    }
 
     #[test]
     fn seed_generation_succeeds() {
@@ -169,5 +190,153 @@ mod tests {
     fn password_is_correct_length() {
         let opts = PasswordOptions::default();
         assert!(generate_password(&opts).unwrap().len().eq(&20));
+    }
+
+    #[test]
+    fn password_respects_custom_length() {
+        for length in [4, 8, 64, 256] {
+            let opts = PasswordOptions {
+                length,
+                ..Default::default()
+            };
+            assert_eq!(generate_password(&opts).unwrap().len(), length);
+        }
+    }
+
+    #[test]
+    fn passwords_are_unique() {
+        let opts = PasswordOptions::default();
+        let a = generate_password(&opts).unwrap();
+        let b = generate_password(&opts).unwrap();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn password_contains_every_enabled_class() {
+        // length 4 = exactly one char per class, worst case for the retry loop
+        let opts = PasswordOptions {
+            length: 4,
+            ..Default::default()
+        };
+        for _ in 0..RUNS {
+            let pw = generate_password(&opts).unwrap();
+            assert!(has_any(&pw, UPPERCASE), "no upper in {pw}");
+            assert!(has_any(&pw, LOWERCASE), "no lower in {pw}");
+            assert!(has_any(&pw, NUMBERS), "no number in {pw}");
+            assert!(has_any(&pw, SYMBOLS), "no symbol in {pw}");
+        }
+    }
+
+    #[test]
+    fn password_only_uses_known_chars() {
+        let opts = PasswordOptions::default();
+        for _ in 0..RUNS {
+            let pw = generate_password(&opts).unwrap();
+            for c in pw.bytes() {
+                assert!(
+                    UPPERCASE.contains(&c)
+                        || LOWERCASE.contains(&c)
+                        || NUMBERS.contains(&c)
+                        || SYMBOLS.contains(&c),
+                    "unexpected char {:?} in {pw}",
+                    c as char
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn disabled_classes_are_left_out() {
+        let cases = [
+            (only_class(true, false, false, false), UPPERCASE),
+            (only_class(false, true, false, false), LOWERCASE),
+            (only_class(false, false, true, false), NUMBERS),
+            (only_class(false, false, false, true), SYMBOLS),
+        ];
+        for (opts, allowed) in cases {
+            for _ in 0..RUNS {
+                let pw = generate_password(&opts).unwrap();
+                assert!(pw.bytes().all(|c| allowed.contains(&c)), "bad char in {pw}");
+            }
+        }
+    }
+
+    #[test]
+    fn lookalikes_are_excluded() {
+        let opts = PasswordOptions {
+            exclude_lookalikes: true,
+            ..Default::default()
+        };
+        for _ in 0..RUNS {
+            let pw = generate_password(&opts).unwrap();
+            assert!(!has_any(&pw, LOOKALIKES), "lookalike in {pw}");
+        }
+    }
+
+    #[test]
+    fn numbers_only_without_lookalikes_works() {
+        // 0 and 1 are gone, so only 2-9 should be left
+        let opts = PasswordOptions {
+            exclude_lookalikes: true,
+            ..only_class(false, false, true, false)
+        };
+        let pw = generate_password(&opts).unwrap();
+        assert!(
+            pw.bytes().all(|c| b"23456789".contains(&c)),
+            "bad char in {pw}"
+        );
+    }
+
+    #[test]
+    fn length_shorter_than_classes_fails() {
+        let opts = PasswordOptions {
+            length: 3,
+            ..Default::default()
+        };
+        assert!(generate_password(&opts).is_err());
+    }
+
+    #[test]
+    fn zero_length_fails() {
+        let opts = PasswordOptions {
+            length: 0,
+            ..Default::default()
+        };
+        assert!(generate_password(&opts).is_err());
+    }
+
+    #[test]
+    fn all_classes_disabled_fails() {
+        let opts = only_class(false, false, false, false);
+        assert!(generate_password(&opts).is_err());
+    }
+
+    #[test]
+    fn reqs_accepts_matching_password() {
+        let opts = PasswordOptions::default();
+        assert!(password_has_reqs("Ab3!", &opts));
+    }
+
+    #[test]
+    fn reqs_rejects_missing_class() {
+        let opts = PasswordOptions::default();
+        assert!(!password_has_reqs("Ab3x", &opts)); // no symbol
+        assert!(!password_has_reqs("ab3!", &opts)); // no upper
+    }
+
+    #[test]
+    fn reqs_rejects_disabled_class() {
+        let opts = only_class(true, true, false, false);
+        assert!(!password_has_reqs("Ab3", &opts));
+    }
+
+    #[test]
+    fn reqs_rejects_lookalikes_when_excluded() {
+        let opts = PasswordOptions {
+            exclude_lookalikes: true,
+            ..Default::default()
+        };
+        assert!(!password_has_reqs("Ab1!", &opts));
+        assert!(password_has_reqs("Ab3!", &opts));
     }
 }
