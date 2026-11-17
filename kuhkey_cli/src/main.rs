@@ -86,11 +86,6 @@ enum Commands {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    // Create the clipoard in the main function and pass it to all other commands
-    // so we can clear it later
-    //
-    // TODO: I still have not found a good way to do this acroess process...
-    let mut clipboard = ClipboardContext::new().ok();
 
     match &cli.commands {
         Commands::Init => {
@@ -122,7 +117,6 @@ fn main() -> anyhow::Result<()> {
                 *symbols,
                 *exclude_lookalikes,
                 *all_params,
-                clipboard.as_mut(),
             )?
         }
         Commands::Get { identifier, copy } => {
@@ -190,7 +184,7 @@ fn check_unlocked() -> Option<OsString> {
 }
 
 // The generic parameter is necessary as T will be a WindowsClipboard on Windows or a MacClipboard on Mac...
-fn cli_gen_password<T>(
+fn cli_gen_password(
     copy: bool,
     length: usize,
     no_uppercase: bool,
@@ -199,11 +193,7 @@ fn cli_gen_password<T>(
     symbols: bool,
     exclude_lookalikes: bool,
     all_params: bool,
-    clipboard: Option<&mut T>,
-) -> Result<(), anyhow::Error>
-where
-    T: ClipboardProvider,
-{
+) -> Result<(), anyhow::Error> {
     if length < MINIMUM_PASSWORD_LENGTH {
         let err = format!("InvalidPassword - Expected a minimum password length of {MINIMUM_PASSWORD_LENGTH}, found {length}").red();
         bail!(err)
@@ -213,6 +203,9 @@ where
         let err = "Can not set `no-upper` and `no-lower` flag at the same time".red();
         bail!("{err}");
     }
+
+    // TODO: Figure out how to clear the clipboard later
+    let clipboard = cli_clipboard::ClipboardContext::new().ok();
 
     let mut options = PasswordOptions {
         length,
@@ -288,22 +281,22 @@ mod tests {
 
     #[test]
     fn cli_gen_succeeds() {
-        assert!(cli_gen_password(false, 16, false, false, true, true, false).is_ok());
+        assert!(cli_gen_password(false, 16, false, false, true, true, false, false).is_ok());
     }
 
     #[test]
     fn cli_gen_zero_length_fails() {
-        assert!(cli_gen_password(false, 0, false, false, false, false, false).is_err());
+        assert!(cli_gen_password(false, 0, false, false, false, false, false, false).is_err());
     }
 
     #[test]
     fn cli_gen_no_upper_and_no_lower_fails() {
-        assert!(cli_gen_password(false, 16, true, true, true, true, false).is_err());
+        assert!(cli_gen_password(false, 16, true, true, true, true, false, false).is_err());
     }
 
     #[test]
     fn cli_gen_too_short_for_classes_fails() {
         // upper + lower are on by default, so len 1 can't fit both
-        assert!(cli_gen_password(false, 1, false, false, false, false, false).is_err());
+        assert!(cli_gen_password(false, 1, false, false, false, false, false, false).is_err());
     }
 }
