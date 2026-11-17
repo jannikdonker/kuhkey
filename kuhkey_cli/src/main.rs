@@ -274,6 +274,7 @@ fn cli_add_entry(_identifier: &str, _generate_password: bool) -> anyhow::Result<
     println!("Key of env var: {key:?}");
 
     Ok(())
+}
 #[cfg(test)]
 mod tests {
     use crate::{Cli, cli_gen_password};
