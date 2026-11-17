@@ -274,4 +274,35 @@ fn cli_add_entry(_identifier: &str, _generate_password: bool) -> anyhow::Result<
     println!("Key of env var: {key:?}");
 
     Ok(())
+#[cfg(test)]
+mod tests {
+    use crate::{Cli, cli_gen_password};
+    use clap::CommandFactory;
+
+    #[test]
+    fn cli_args_are_valid() {
+        // should catch clap config mistakes (dup flags etc) without running anything
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn cli_gen_succeeds() {
+        assert!(cli_gen_password(false, 16, false, false, true, true, false).is_ok());
+    }
+
+    #[test]
+    fn cli_gen_zero_length_fails() {
+        assert!(cli_gen_password(false, 0, false, false, false, false, false).is_err());
+    }
+
+    #[test]
+    fn cli_gen_no_upper_and_no_lower_fails() {
+        assert!(cli_gen_password(false, 16, true, true, true, true, false).is_err());
+    }
+
+    #[test]
+    fn cli_gen_too_short_for_classes_fails() {
+        // upper + lower are on by default, so len 1 can't fit both
+        assert!(cli_gen_password(false, 1, false, false, false, false, false).is_err());
+    }
 }
