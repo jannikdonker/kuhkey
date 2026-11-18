@@ -35,6 +35,7 @@ const MAX_P_COST: u32 = 16;
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct Entry {
     id: [u8; 16],
+    name: String,
     password: String,
     username: String,
     url: String,
@@ -45,10 +46,11 @@ pub struct Entry {
 }
 
 impl Entry {
-    pub fn new(password: &str, username: &str, url: &str, notes: &str) -> Self {
+    pub fn new(name: &str, password: &str, username: &str, url: &str, notes: &str) -> Self {
         let timestamp = current_timestamp();
         Entry {
             id: Uuid::new_v4().as_bytes().to_owned(),
+            name: name.to_owned(),
             password: password.to_owned(),
             username: username.to_owned(),
             url: url.to_owned(),
@@ -125,7 +127,7 @@ impl Entry {
         + 3 * 8 // timestamps
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(&self) -> Vec<u8> {
         let capacity = self.get_byte_size();
         let mut bytes = Vec::with_capacity(capacity);
         bytes.extend_from_slice(&self.id);
@@ -140,7 +142,7 @@ impl Entry {
         bytes
     }
 
-    pub fn from_bytes(b: &[u8]) -> Result<Self> {
+    fn from_bytes(b: &[u8]) -> Result<Self> {
         let Some((id, mut rest)) = b.split_first_chunk::<16>() else {
             bail!("entry too short for id");
         };
@@ -149,6 +151,7 @@ impl Entry {
         // fields parsed so far instead of leaving plain Strings behind.
         let mut entry = Entry {
             id: *id,
+            name: String::new(),
             password: String::new(),
             username: String::new(),
             url: String::new(),
@@ -637,8 +640,8 @@ mod tests {
         VaultUnlocked {
             header: h,
             entries: vec![
-                Entry::new("hunter2", "muh", "kuh.de", ""),
-                Entry::new("pw", "", "", "notes"),
+                Entry::new("Reddit", "hunter2", "muh", "kuh.de", ""),
+                Entry::new("Facebook", "pw", "", "", "notes"),
             ],
         }
     }
