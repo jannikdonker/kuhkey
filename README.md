@@ -1,14 +1,8 @@
-# Run Project
+<div align="center" style="display:grid;place-items:center;">
+<p>
+    <img width="80" src="/assets/logo/kuhkey-mark-512.png" alt="V logo"></a>
+</p>
+<h1>The KuhKey Password Manager</h1>
+</div>
 
-This project combines multiple `crates` into one master crate. <br>
-Thus, using `cargo run` won't work as `cargo` does not know which crate to run!
-
-Specify the crate you want to run with:
-```bash
-cargo run --bin [crate]
-```
-
-For example, if you want to run the `kuhkey_cli` crate, run:
-```bash
-cargo run --bin kuhkey_cli
-```
+This is a test commmit
