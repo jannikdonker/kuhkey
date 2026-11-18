@@ -77,6 +77,10 @@ impl Entry {
         systemtime_from_timestamp(self.last_used)
     }
 
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+
     pub fn get_password(&self) -> &str {
         &self.password
     }
@@ -91,6 +95,12 @@ impl Entry {
 
     pub fn get_notes(&self) -> &str {
         &self.notes
+    }
+
+    pub fn set_name(&mut self, new_name: &str) {
+        self.name.zeroize();
+        self.name.push_str(new_name);
+        self.modified = current_timestamp();
     }
 
     pub fn set_password(&mut self, new_password: &str) {
@@ -119,7 +129,8 @@ impl Entry {
 
     fn get_byte_size(&self) -> usize {
         16 // uuid
-        + 4 * 4 // len prefix for the strings so we know how many bytes to grab
+        + 5 * 4 // len prefix for the strings so we know how many bytes to grab
+        + self.name.len()
         + self.password.len()
         + self.username.len()
         + self.url.len()
@@ -131,7 +142,13 @@ impl Entry {
         let capacity = self.get_byte_size();
         let mut bytes = Vec::with_capacity(capacity);
         bytes.extend_from_slice(&self.id);
-        for s in [&self.password, &self.username, &self.url, &self.notes] {
+        for s in [
+            &self.name,
+            &self.password,
+            &self.username,
+            &self.url,
+            &self.notes,
+        ] {
             let len: u32 = s.len().try_into().expect("entry field too long");
             bytes.extend_from_slice(&len.to_le_bytes());
             bytes.extend_from_slice(s.as_bytes());
@@ -161,6 +178,7 @@ impl Entry {
             last_used: 0,
         };
         for field in [
+            &mut entry.name,
             &mut entry.password,
             &mut entry.username,
             &mut entry.url,
@@ -207,7 +225,7 @@ fn systemtime_from_timestamp(secs: u64) -> SystemTime {
         .unwrap_or(UNIX_EPOCH)
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 struct KdfParams {
     m_cost: u32, // memory in KiB
     t_cost: u32, // time (iterations)
@@ -226,14 +244,6 @@ impl Default for KdfParams {
 }
 
 impl KdfParams {
-    fn new(m_cost: u32, t_cost: u32, p_cost: u32) -> Self {
-        Self {
-            m_cost,
-            t_cost,
-            p_cost,
-        }
-    }
-
     fn to_bytes(self) -> [u8; 12] {
         [
             self.m_cost.to_le_bytes(),
@@ -653,6 +663,7 @@ mod tests {
         let r = unlock_vault(b"master", &locked).unwrap();
         assert_eq!(r.entries.len(), v.entries.len());
         for (a, b) in r.entries.iter().zip(&v.entries) {
+            assert_eq!(a.get_name(), b.get_name());
             assert_eq!(a.to_bytes(), b.to_bytes());
         }
     }
