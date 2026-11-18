@@ -193,9 +193,7 @@ fn cli_gen_password(
     }
 
     // Has the user supplied any options?
-    let user_options = [uppercase, lowercase, numbers, symbols, exclude_lookalikes]
-        .iter()
-        .any(|&b| b);
+    let user_options = [uppercase, lowercase, numbers, symbols].iter().any(|&b| b);
 
     // TODO: Figure out how to clear the clipboard later
     let clipboard = cli_clipboard::ClipboardContext::new().ok();
@@ -212,6 +210,7 @@ fn cli_gen_password(
     } else {
         PasswordOptions {
             length,
+            exclude_lookalikes: exclude_lookalikes,
             ..Default::default()
         }
     };
