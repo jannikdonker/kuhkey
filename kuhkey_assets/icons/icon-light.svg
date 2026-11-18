@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200.00 200.00" width="200" height="200" role="img" aria-label="KuhKey App-Icon">
+<rect x="1" y="1" width="198" height="198" rx="45" fill="#FFFFFF" stroke="#D4D4D4" stroke-width="2"/>
+<g transform="translate(25.00 15.62) scale(0.937500)">
+<path d="M46 80 V50 a34 34 0 0 1 68 0 V80" fill="none" stroke="#161616" stroke-width="14" stroke-linecap="round"/>
+<ellipse cx="20" cy="94" rx="16" ry="8" transform="rotate(-24 20 94)" fill="#FFFFFF" stroke="#161616" stroke-width="6"/>
+<ellipse cx="140" cy="94" rx="16" ry="8" transform="rotate(24 140 94)" fill="#FFFFFF" stroke="#161616" stroke-width="6"/>
+<rect x="22" y="72" width="116" height="96" rx="30" fill="#FFFFFF"/>
+<path d="M58 72 H102 C 98 88, 94 100, 80 102 C 66 100, 62 88, 58 72 Z" fill="#161616"/>
+<circle cx="80" cy="83" r="5.5" fill="#FFFFFF"/>
+<path d="M77 85 L74.5 96 H85.5 L83 85 Z" fill="#FFFFFF"/>
+<rect x="22" y="72" width="116" height="96" rx="30" fill="none" stroke="#161616" stroke-width="7"/>
+<circle cx="56" cy="110" r="7" fill="#161616"/>
+<circle cx="58.5" cy="107.5" r="2.2" fill="#FFFFFF"/>
+<circle cx="104" cy="110" r="7" fill="#161616"/>
+<circle cx="106.5" cy="107.5" r="2.2" fill="#FFFFFF"/>
+<rect x="42" y="126" width="76" height="32" rx="16" fill="#F7A8B8" stroke="#161616" stroke-width="6"/>
+<ellipse cx="64" cy="142" rx="4" ry="6" fill="#161616"/>
+<ellipse cx="96" cy="142" rx="4" ry="6" fill="#161616"/>
+</g>
+</svg>
