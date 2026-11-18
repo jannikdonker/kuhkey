@@ -22,9 +22,9 @@ const NONCE_LEN: usize = 24; // 24 for XChaCha20 (12 for AES-GCM)
 const SALT_LEN: usize = 16; // 16 for Argon2
 const KEY_LEN: usize = 32;
 
-/// MAGIC_BYTES + VERSION + NONCE + SALT + KdFParams + name length (u8).
+/// MAGIC_BYTES + VERSION + UUID + NONCE + SALT + KdFParams + name length (u8).
 /// The variable-length vault name follows directly after.
-pub const HEADER_FIXED_LEN: usize = 4 + 4 + NONCE_LEN + SALT_LEN + 12 + 1;
+pub const HEADER_FIXED_LEN: usize = 4 + 4 + 16 + NONCE_LEN + SALT_LEN + 12 + 1;
 
 /// The name length is stored as a u8
 const MAX_VAULT_NAME_LEN: usize = u8::MAX as usize;
@@ -273,12 +273,13 @@ impl KdfParams {
     }
 }
 
-// Bytes: 4 + 4 + 24 + 16 + 12 + 1 = 61, followed by 0..=255 bytes of name
+// Bytes: 4 + 4 + 16 + 24 + 16 + 12 + 1 = 77, followed by 0..=255 bytes of name
 // The header is stored in plaintext (but authenticated), so the name is readable without the password.
 #[derive(Clone)]
 struct VaultHeader {
     magic: [u8; 4],
     version: u32,
+    id: Uuid,
     nonce: [u8; NONCE_LEN],
     salt: [u8; SALT_LEN],
     kdf_params: KdfParams, // 12 bytes (3 * u32)
@@ -299,6 +300,7 @@ impl VaultHeader {
         Ok(Self {
             magic: MAGIC_BYTES,
             version: VAULT_VERSION,
+            id: Uuid::new_v4(),
             nonce,
             salt,
             kdf_params,
@@ -313,6 +315,7 @@ impl VaultHeader {
         let mut bytes = Vec::with_capacity(HEADER_FIXED_LEN + self.name.len());
         bytes.extend_from_slice(&self.magic);
         bytes.extend_from_slice(&self.version.to_le_bytes());
+        bytes.extend_from_slice(self.id.as_bytes());
         bytes.extend_from_slice(&self.nonce);
         bytes.extend_from_slice(&self.salt);
         bytes.extend_from_slice(&self.kdf_params.to_bytes());
@@ -330,6 +333,7 @@ impl VaultHeader {
         // unwrap is save here because we know the HEADER_FIXED_LEN
         let (magic, fixed) = fixed.split_first_chunk::<4>().unwrap();
         let (version, fixed) = fixed.split_first_chunk::<4>().unwrap();
+        let (id, fixed) = fixed.split_first_chunk::<16>().unwrap();
         let (nonce, fixed) = fixed.split_first_chunk::<NONCE_LEN>().unwrap();
         let (salt, fixed) = fixed.split_first_chunk::<SALT_LEN>().unwrap();
         let (kdf, fixed) = fixed.split_first_chunk::<12>().unwrap();
@@ -364,6 +368,7 @@ impl VaultHeader {
         let header = Self {
             magic: *magic,
             version,
+            id: Uuid::from_bytes(*id),
             nonce: *nonce,
             salt: *salt,
             kdf_params,
@@ -381,6 +386,10 @@ pub struct VaultLocked {
 impl VaultLocked {
     pub fn get_name(&self) -> &str {
         &self.header.name
+    }
+
+    pub fn get_id(&self) -> &Uuid {
+        &self.header.id
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -416,6 +425,10 @@ impl VaultUnlocked {
         &self.header.name
     }
 
+    pub fn get_id(&self) -> &Uuid {
+        &self.header.id
+    }
+
     pub fn set_name(&mut self, new_name: &str) -> Result<()> {
         if new_name.len() > MAX_VAULT_NAME_LEN {
             bail!("vault name to long")
@@ -438,10 +451,10 @@ fn derive_key(password: &[u8], salt: &[u8], p: KdfParams) -> Result<Zeroizing<[u
 /// Encrypts the entries into a new locked vault.
 /// A fresh salt and nonce are generated on every call, so a nonce is never reused with the same key.
 pub fn lock_vault(password: &[u8], vault_unlocked: &VaultUnlocked) -> Result<VaultLocked> {
-    let header = VaultHeader::new(
-        &vault_unlocked.header.name,
-        vault_unlocked.header.kdf_params,
-    )?;
+    // Keep id, name and kdf params of the vault, only salt and nonce are renewed
+    let mut header = vault_unlocked.header.clone();
+    getrandom::fill(&mut header.salt)?;
+    getrandom::fill(&mut header.nonce)?;
 
     let key = derive_key(password, &header.salt, header.kdf_params)?;
     let cipher = XChaCha20Poly1305::new_from_slice(&key[..])?;
@@ -535,6 +548,7 @@ mod tests {
         VaultHeader {
             magic: MAGIC_BYTES,
             version: VAULT_VERSION,
+            id: Uuid::new_v4(),
             nonce: [7; NONCE_LEN],
             salt: [9; SALT_LEN],
             kdf_params: KdfParams {
