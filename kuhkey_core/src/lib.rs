@@ -223,6 +223,14 @@ impl Default for KdfParams {
 }
 
 impl KdfParams {
+    fn new(m_cost: u32, t_cost: u32, p_cost: u32) -> Self {
+        Self {
+            m_cost,
+            t_cost,
+            p_cost,
+        }
+    }
+
     fn to_bytes(self) -> [u8; 12] {
         [
             self.m_cost.to_le_bytes(),
@@ -259,6 +267,21 @@ struct VaultHeader {
 }
 
 impl VaultHeader {
+    fn new(kdf_params: KdfParams) -> Result<Self> {
+        let mut salt = [0u8; SALT_LEN];
+        let mut nonce = [0u8; NONCE_LEN];
+        getrandom::fill(&mut salt)?;
+        getrandom::fill(&mut nonce)?;
+
+        Ok(Self {
+            magic: MAGIC_BYTES,
+            version: VAULT_VERSION,
+            nonce,
+            salt,
+            kdf_params,
+        })
+    }
+
     fn to_bytes(&self) -> [u8; HEADER_LEN] {
         [
             &self.magic as &[u8],
@@ -336,6 +359,15 @@ pub struct VaultUnlocked {
     entries: Vec<Entry>,
 }
 
+impl VaultUnlocked {
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            header: VaultHeader::new(KdfParams::default())?,
+            entries: Vec::new(),
+        })
+    }
+}
+
 fn derive_key(password: &[u8], salt: &[u8], p: KdfParams) -> Result<Zeroizing<[u8; KEY_LEN]>> {
     let params = Params::new(p.m_cost, p.t_cost, p.p_cost, Some(KEY_LEN))?;
     let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
@@ -348,18 +380,7 @@ fn derive_key(password: &[u8], salt: &[u8], p: KdfParams) -> Result<Zeroizing<[u
 /// Encrypts the entries into a new locked vault.
 /// A fresh salt and nonce are generated on every call, so a nonce is never reused with the same key.
 pub fn lock_vault(password: &[u8], vault_unlocked: &VaultUnlocked) -> Result<VaultLocked> {
-    let mut salt = [0u8; SALT_LEN];
-    let mut nonce = [0u8; NONCE_LEN];
-    getrandom::fill(&mut salt)?;
-    getrandom::fill(&mut nonce)?;
-
-    let header = VaultHeader {
-        magic: MAGIC_BYTES,
-        version: VAULT_VERSION,
-        nonce,
-        salt,
-        kdf_params: vault_unlocked.header.kdf_params,
-    };
+    let header = VaultHeader::new(vault_unlocked.header.kdf_params)?;
 
     let key = derive_key(password, &header.salt, header.kdf_params)?;
     let cipher = XChaCha20Poly1305::new_from_slice(&key[..])?;
@@ -438,7 +459,10 @@ mod tests {
     #[test]
     fn from_timestamp_roundtrips_normal_values() {
         let t = systemtime_from_timestamp(1_700_000_000);
-        assert_eq!(t.duration_since(UNIX_EPOCH).unwrap().as_secs(), 1_700_000_000);
+        assert_eq!(
+            t.duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            1_700_000_000
+        );
     }
 
     #[test]
