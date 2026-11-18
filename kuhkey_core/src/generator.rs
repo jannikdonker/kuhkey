@@ -3,7 +3,7 @@ use std::char;
 use anyhow::{Result, bail};
 use chacha20poly1305::aead::common::getrandom;
 use rand::Rng;
-use rand_chacha::{ChaCha12Rng, rand_core::SeedableRng};
+use rand_chacha::{ChaCha20Rng, rand_core::SeedableRng};
 
 pub const UPPERCASE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 pub const LOWERCASE: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
@@ -59,7 +59,7 @@ pub fn generate_password(opts: &PasswordOptions) -> Result<String> {
     }
 
     let seed = generate_random_seed()?;
-    let mut rng = ChaCha12Rng::from_seed(seed);
+    let mut rng = ChaCha20Rng::from_seed(seed);
 
     let mut charset: Vec<u8> = Vec::new();
 
