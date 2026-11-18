@@ -240,7 +240,7 @@ impl VaultHeader {
     }
 }
 
-struct VaultLocked {
+pub struct VaultLocked {
     header: VaultHeader,
     payload: Vec<u8>,
 }
@@ -262,7 +262,7 @@ impl VaultLocked {
     }
 }
 
-struct VaultUnlocked {
+pub struct VaultUnlocked {
     header: VaultHeader,
     entries: Vec<Entry>,
 }
@@ -294,6 +294,7 @@ pub fn lock_vault(password: &[u8], vault_unlocked: &VaultUnlocked) -> Result<Vau
 
     let key = derive_key(password, &header.salt, header.kdf_params)?;
     let cipher = XChaCha20Poly1305::new_from_slice(&key[..])?;
+    drop(key); // explicit drop
 
     // Each entry is prefixed with its u32 length so unlock_vault can split them again.
     // Capacity is reserved up front so no unzeroized copies are left behind by reallocations.
@@ -325,6 +326,7 @@ pub fn unlock_vault(password: &[u8], vault_locked: &VaultLocked) -> Result<Vault
     let header = &vault_locked.header;
     let key = derive_key(password, &header.salt, header.kdf_params)?;
     let cipher = XChaCha20Poly1305::new_from_slice(&key[..])?;
+    drop(key); // explicit drop
 
     let header_bytes = header.to_bytes();
     let plaintext = Zeroizing::new(
