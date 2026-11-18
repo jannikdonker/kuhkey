@@ -1,20 +1,14 @@
-#![allow(dead_code)]
-#![allow(unused)]
-#![allow(private_interfaces)]
-
 use anyhow::{Context, Ok, Result, bail};
 use argon2::{
-    Algorithm::{self, Argon2d},
+    Algorithm::{self},
     Argon2, Params, Version,
 };
-use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chacha20poly1305::{
-    ChaCha20Poly1305, ChaChaPoly1305, KeyInit, XChaCha20Poly1305, XNonce,
+    KeyInit, XChaCha20Poly1305, XNonce,
     aead::{Aead, Payload, common::getrandom},
 };
-use dirs::data_dir;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
