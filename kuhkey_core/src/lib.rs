@@ -38,7 +38,8 @@ const MAX_P_COST: u32 = 16;
 
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct Entry {
-    id: [u8; 16],
+    #[zeroize(skip)] // id doesnt need to be zeroized
+    id: Uuid,
     name: String,
     password: String,
     username: String,
@@ -53,7 +54,7 @@ impl Entry {
     pub fn new(name: &str, password: &str, username: &str, url: &str, notes: &str) -> Self {
         let timestamp = current_timestamp();
         Entry {
-            id: Uuid::new_v4().as_bytes().to_owned(),
+            id: Uuid::new_v4(),
             name: name.to_owned(),
             password: password.to_owned(),
             username: username.to_owned(),
@@ -65,8 +66,8 @@ impl Entry {
         }
     }
 
-    pub fn get_id(&self) -> Uuid {
-        Uuid::from_bytes(self.id)
+    pub fn get_id(&self) -> &Uuid {
+        &self.id
     }
 
     pub fn get_created(&self) -> SystemTime {
@@ -145,7 +146,7 @@ impl Entry {
     fn to_bytes(&self) -> Vec<u8> {
         let capacity = self.get_byte_size();
         let mut bytes = Vec::with_capacity(capacity);
-        bytes.extend_from_slice(&self.id);
+        bytes.extend_from_slice(self.id.as_bytes());
         for s in [
             &self.name,
             &self.password,
@@ -171,7 +172,7 @@ impl Entry {
         // Fill an Entry in place so an early return drops (and zeroizes) the
         // fields parsed so far instead of leaving plain Strings behind.
         let mut entry = Entry {
-            id: *id,
+            id: Uuid::from_bytes(*id),
             name: String::new(),
             password: String::new(),
             username: String::new(),
