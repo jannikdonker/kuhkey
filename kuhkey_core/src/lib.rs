@@ -3,14 +3,14 @@ use argon2::{
     Algorithm::{self},
     Argon2, Params, Version,
 };
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chacha20poly1305::{
     KeyInit, XChaCha20Poly1305, XNonce,
     aead::{Aead, Payload, common::getrandom},
 };
 use uuid::Uuid;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 pub mod generator;
 
@@ -32,8 +32,8 @@ const MAX_T_COST: u32 = 64;
 /// Refuse to run Argon2 with more than 16 lanes
 const MAX_P_COST: u32 = 16;
 
-#[derive(Clone)]
-struct Entry {
+#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+pub struct Entry {
     id: [u8; 16],
     password: String,
     username: String,
@@ -57,6 +57,62 @@ impl Entry {
             modified: timestamp,
             last_used: 0,
         }
+    }
+
+    pub fn get_id(&self) -> Uuid {
+        Uuid::from_bytes(self.id)
+    }
+
+    pub fn get_created(&self) -> SystemTime {
+        systemtime_from_timestamp(self.created)
+    }
+
+    pub fn get_modified(&self) -> SystemTime {
+        systemtime_from_timestamp(self.modified)
+    }
+
+    pub fn get_last_used(&self) -> SystemTime {
+        systemtime_from_timestamp(self.last_used)
+    }
+
+    pub fn get_password(&self) -> &str {
+        &self.password
+    }
+
+    pub fn get_username(&self) -> &str {
+        &self.username
+    }
+
+    pub fn get_url(&self) -> &str {
+        &self.url
+    }
+
+    pub fn get_notes(&self) -> &str {
+        &self.notes
+    }
+
+    pub fn set_password(&mut self, new_password: &str) {
+        self.password.zeroize();
+        self.password.push_str(new_password);
+        self.modified = current_timestamp();
+    }
+
+    pub fn set_username(&mut self, new_username: &str) {
+        self.username.zeroize();
+        self.username.push_str(new_username);
+        self.modified = current_timestamp();
+    }
+
+    pub fn set_url(&mut self, new_url: &str) {
+        self.url.zeroize();
+        self.url.push_str(new_url);
+        self.modified = current_timestamp();
+    }
+
+    pub fn set_notes(&mut self, new_notes: &str) {
+        self.notes.zeroize();
+        self.notes.push_str(new_notes);
+        self.modified = current_timestamp();
     }
 
     fn get_byte_size(&self) -> usize {
@@ -89,11 +145,24 @@ impl Entry {
             bail!("entry too short for id");
         };
 
-        let mut password = String::new();
-        let mut username = String::new();
-        let mut url = String::new();
-        let mut notes = String::new();
-        for field in [&mut password, &mut username, &mut url, &mut notes] {
+        // Fill an Entry in place so an early return drops (and zeroizes) the
+        // fields parsed so far instead of leaving plain Strings behind.
+        let mut entry = Entry {
+            id: *id,
+            password: String::new(),
+            username: String::new(),
+            url: String::new(),
+            notes: String::new(),
+            created: 0,
+            modified: 0,
+            last_used: 0,
+        };
+        for field in [
+            &mut entry.password,
+            &mut entry.username,
+            &mut entry.url,
+            &mut entry.notes,
+        ] {
             let Some((len_bytes, after_len)) = rest.split_first_chunk::<4>() else {
                 bail!("entry too short for string length");
             };
@@ -103,7 +172,7 @@ impl Entry {
             }
             let (str_bytes, after_str) = after_len.split_at(len);
             rest = after_str;
-            *field = String::from_utf8(str_bytes.to_vec())?;
+            field.push_str(std::str::from_utf8(str_bytes)?);
         }
 
         if rest.len() < 8 * 3 {
@@ -115,24 +184,24 @@ impl Entry {
         let (modified, rest) = rest.split_first_chunk::<8>().unwrap();
         let (last_used, _) = rest.split_first_chunk::<8>().unwrap();
 
-        Ok(Self {
-            id: *id,
-            password,
-            username,
-            url,
-            notes,
-            created: u64::from_le_bytes(*created),
-            modified: u64::from_le_bytes(*modified),
-            last_used: u64::from_le_bytes(*last_used),
-        })
+        entry.created = u64::from_le_bytes(*created);
+        entry.modified = u64::from_le_bytes(*modified);
+        entry.last_used = u64::from_le_bytes(*last_used);
+        Ok(entry)
     }
 }
 
-pub fn current_timestamp() -> u64 {
+fn current_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+fn systemtime_from_timestamp(secs: u64) -> SystemTime {
+    UNIX_EPOCH
+        .checked_add(Duration::from_secs(secs))
+        .unwrap_or(UNIX_EPOCH)
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -365,6 +434,17 @@ pub fn unlock_vault(password: &[u8], vault_locked: &VaultLocked) -> Result<Vault
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn from_timestamp_roundtrips_normal_values() {
+        let t = systemtime_from_timestamp(1_700_000_000);
+        assert_eq!(t.duration_since(UNIX_EPOCH).unwrap().as_secs(), 1_700_000_000);
+    }
+
+    #[test]
+    fn from_timestamp_does_not_panic_on_overflow() {
+        assert_eq!(systemtime_from_timestamp(u64::MAX), UNIX_EPOCH);
+    }
 
     fn header() -> VaultHeader {
         VaultHeader {
