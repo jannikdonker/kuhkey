@@ -14,5 +14,15 @@ These API calls are exposed:
 
 ```rust
 create_user_account(name: String);
-create_user_vault(username: String, vaultname: String)
+create_user_vault(username: String, vaultname: String);
+```
+API Calls to be implemented:
+
+```rust
+get_user() -> UserAccount;
+get_user_vault() -> UserVault;
+get_all_vaults_from_user() -> Vec<UserVault>;
+delete_user(name: String);
+delete_vault(username: String, vaultname: String);
+change_user_name(username: String, new_username: String);
 ```
