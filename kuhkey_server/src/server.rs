@@ -1,9 +1,14 @@
-use axum::{Json, Router, extract::State, routing::post};
+use axum::{
+    Json, Router,
+    extract::State,
+    routing::{get, post},
+};
 use reqwest::StatusCode;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::{
     net::SocketAddr,
+    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
@@ -97,14 +102,66 @@ async fn db_create_user_vault(
     }
 }
 
+async fn db_get_user(
+    State(state): State<AppState>,
+    Json(username): Json<String>,
+) -> Result<Json<UserAccount>, StatusCode> {
+    let conn = state
+        .connection
+        .lock()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut statement = conn
+        .prepare("SELECT * FROM user WHERE name = ?1")
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let user = statement
+        .query_one([&username], |row| {
+            let user_id: String = row.get(0)?;
+            let username: String = row.get(1)?;
+
+            Ok(UserAccount {
+                id: user_id,
+                name: username,
+            })
+        })
+        .map_err(|err| match err {
+            rusqlite::Error::QueryReturnedNoRows => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        })?;
+
+    Ok(Json(user))
+}
+
+async fn db_get_user_vault(
+    State(state): State<AppState>,
+    Json((username, vaultname)): Json<(String, String)>,
+) -> Result<Json<UserVault>, StatusCode> {
+    let user_id = db_get_user_id(State(state), &username)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let path = PathBuf::from(BASE_VAULT_PATH)
+        .join(&user_id)
+        .join(&vaultname);
+    let vault_name = path
+        .file_name()
+        .ok_or(StatusCode::NOT_FOUND)?
+        .to_string_lossy()
+        .into_owned();
+    Ok(Json(UserVault {
+        user_name: username,
+        vault_name,
+    }))
+}
+
 async fn db_get_user_id(
     State(state): State<AppState>,
     user_name: &str,
 ) -> rusqlite::Result<String> {
     let conn = state.connection.lock().unwrap();
-    let mut statement = conn.prepare(&format!("SELECT id FROM user WHERE name = '{user_name}'"))?;
+    let mut statement = conn.prepare("SELECT id FROM user WHERE name = ?1")?;
 
-    let user_id = statement.query_one([], |row| {
+    let user_id = statement.query_one([user_name], |row| {
         let id: String = row.get(0)?;
 
         Ok(id)
@@ -121,6 +178,8 @@ fn app(conn: Connection) -> Router {
         .route("/api/v1/create_tables", post(db_create_tables))
         .route("/api/v1/create_user", post(db_create_user))
         .route("/api/v1/create_user_vault", post(db_create_user_vault))
+        .route("/api/v1/get_user", get(db_get_user))
+        .route("/api/v1/get_user_vault", get(db_get_user_vault))
         .with_state(state)
 }
 
