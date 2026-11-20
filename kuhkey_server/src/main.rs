@@ -68,7 +68,7 @@ impl<'a> Server<'a> {
             .json()
             .await?;
 
-        println!("[INFO]: Successfully request user `{}`", user_name);
+        println!("[INFO]: Successfully requested user `{}`", user_name);
 
         Ok(user_account)
     }
@@ -89,11 +89,30 @@ impl<'a> Server<'a> {
             .await?;
 
         println!(
-            "[INFO]: Successfully request user vault from `{}` and vault name `{}`",
+            "[INFO]: Successfully requested user vault from `{}` and vault name `{}`",
             user_name, vault_name
         );
 
         Ok(user_vault)
+    }
+
+    async fn get_all_vaults_from_user(&self, user_name: String) -> reqwest::Result<Vec<UserVault>> {
+        let vaults_from_user: Vec<UserVault> = self
+            .client
+            .get(format!("{BASE_URL}/get_all_vaults_from_user"))
+            .json(&user_name)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+
+        println!(
+            "[INFO]: Successfully requested all vaults from user `{}`",
+            user_name
+        );
+
+        Ok(vaults_from_user)
     }
 }
 
@@ -121,10 +140,11 @@ async fn main() -> Result<(), reqwest::Error> {
 
     loop {
         println!("[1] To set up tables in the DB");
-        println!("[2] To create a test account`");
+        println!("[2] To create a test account");
         println!("[3] To create a test vault for the test account");
         println!("[4] To request the test account");
         println!("[5] To request the test accounts vault");
+        println!("[6] To request all the vaults from the test account");
         println!("[q] to exit");
 
         // This is only here for testing so .expect() is fine
@@ -137,7 +157,10 @@ async fn main() -> Result<(), reqwest::Error> {
             "2" => server.create_user_account(String::from("Marwin")).await?,
             "3" => {
                 server
-                    .create_user_vault(String::from("Marwin"), String::from("Marwin's Vault"))
+                    .create_user_vault(
+                        String::from("Marwin"),
+                        String::from("Marwin's second Vault"),
+                    )
                     .await?
             }
             "4" => {
@@ -150,6 +173,13 @@ async fn main() -> Result<(), reqwest::Error> {
                     .await
                     .unwrap();
                 println!("Got user vault: {user_vault:?}");
+            }
+            "6" => {
+                let all_user_vaults = server
+                    .get_all_vaults_from_user("Marwin".to_string())
+                    .await
+                    .unwrap();
+                println!("Got all user vaults: {all_user_vaults:?}");
             }
             "q" => break,
             _ => {
