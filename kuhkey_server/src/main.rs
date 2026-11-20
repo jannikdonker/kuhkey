@@ -97,6 +97,9 @@ impl<'a> Server<'a> {
     }
 }
 
+// TODO: This will later be a lib.rs file, exposing just the Server struct and its's calls
+//
+// For now, leave this here so we can test the server and it's functions
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
     // Spawn the server in a background task
@@ -112,19 +115,50 @@ async fn main() -> Result<(), reqwest::Error> {
     let client = reqwest::Client::new();
     let server = Server { client: &client };
 
-    server.create_user_table().await?;
-    server.create_user_account(String::from("Marwin")).await?;
-    server
-        .create_user_vault(String::from("Marwin"), String::from("Marwin's Vault"))
-        .await?;
-    let user = server.get_user("Marwin".to_string()).await.unwrap();
-    println!("Got user: {user:?}");
+    let mut buffer = String::new();
 
-    let user_vault = server
-        .get_user_vault("Marwin".to_string(), "Marwin's Vault".to_string())
-        .await
-        .unwrap();
-    println!("Got user vault: {user_vault:?}");
+    println!("KuhKey Server Test environment");
 
+    loop {
+        println!("[1] To set up tables in the DB");
+        println!("[2] To create a test account`");
+        println!("[3] To create a test vault for the test account");
+        println!("[4] To request the test account");
+        println!("[5] To request the test accounts vault");
+        println!("[q] to exit");
+
+        // This is only here for testing so .expect() is fine
+        std::io::stdin()
+            .read_line(&mut buffer)
+            .expect("failed to read from stdin");
+
+        match buffer.trim() {
+            "1" => server.create_user_table().await?,
+            "2" => server.create_user_account(String::from("Marwin")).await?,
+            "3" => {
+                server
+                    .create_user_vault(String::from("Marwin"), String::from("Marwin's Vault"))
+                    .await?
+            }
+            "4" => {
+                let user = server.get_user("Marwin".to_string()).await.unwrap();
+                println!("Got user: {user:?}");
+            }
+            "5" => {
+                let user_vault = server
+                    .get_user_vault("Marwin".to_string(), "Marwin's Vault".to_string())
+                    .await
+                    .unwrap();
+                println!("Got user vault: {user_vault:?}");
+            }
+            "q" => break,
+            _ => {
+                println!("Unknown command");
+            }
+        }
+
+        println!("\n\n");
+        buffer.clear();
+    }
     Ok(())
 }
