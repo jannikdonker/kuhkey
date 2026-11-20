@@ -17,7 +17,7 @@ create_user_account(name: String);
 create_user_vault(username: String, vaultname: String);
 get_user(username: String) -> Result<UserAccount>;
 get_user_vault(username: String) -> Result<UserVault>;
-get_all_vaults_from_user() -> Result<Vec<UserVault>>;
+get_all_vaults_from_user(username: String) -> Result<Vec<UserVault>>;
 ```
 API Calls to be implemented:
 
