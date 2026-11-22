@@ -22,15 +22,16 @@ pub const HEADER_LEN: usize = 4 + 2 + NONCE_LEN + SALT_LEN + 12;
 const MAX_M_COST: u32 = 1024 * 1024;
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
-struct Entry {
-    id: [u8; 16],
-    password: String,
-    username: String,
-    url: String,
-    notes: String,
-    created: u64,
-    modified: u64,
-    last_used: u64,
+pub struct Entry {
+    pub id: [u8; 16],
+    pub password: String,
+    pub username: String,
+    pub url: String,
+    pub name: String,
+    pub notes: String,
+    pub created: u64,
+    pub modified: u64,
+    pub last_used: u64,
 }
 
 struct KdfParams {
