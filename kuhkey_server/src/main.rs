@@ -20,12 +20,12 @@ impl<'a> Server<'a> {
         Ok(())
     }
 
-    async fn create_user_account(&self, name: String) -> reqwest::Result<()> {
+    async fn create_user_account(&self, name: impl Into<String>) -> reqwest::Result<()> {
         self.client
             .post(format!("{BASE_URL}/create_user"))
             .json(&UserAccount {
                 id: uuid::Uuid::new_v4().to_string(),
-                name,
+                name: name.into(),
             })
             .send()
             .await?
@@ -37,9 +37,12 @@ impl<'a> Server<'a> {
 
     async fn create_user_vault(
         &self,
-        user_name: String,
-        vault_name: String,
+        user_name: impl Into<String>,
+        vault_name: impl Into<String>,
     ) -> reqwest::Result<()> {
+        let user_name = user_name.into();
+        let vault_name = vault_name.into();
+
         self.client
             .post(format!("{BASE_URL}/create_user_vault"))
             .json(&UserVault {
@@ -57,7 +60,8 @@ impl<'a> Server<'a> {
         Ok(())
     }
 
-    async fn get_user(&self, user_name: String) -> reqwest::Result<UserAccount> {
+    async fn get_user(&self, user_name: impl Into<String>) -> reqwest::Result<UserAccount> {
+        let user_name = user_name.into();
         let user_account: UserAccount = self
             .client
             .get(format!("{BASE_URL}/get_user"))
@@ -75,9 +79,12 @@ impl<'a> Server<'a> {
 
     async fn get_user_vault(
         &self,
-        user_name: String,
-        vault_name: String,
+        user_name: impl Into<String>,
+        vault_name: impl Into<String>,
     ) -> reqwest::Result<UserVault> {
+        let user_name = user_name.into();
+        let vault_name = vault_name.into();
+
         let user_vault: UserVault = self
             .client
             .get(format!("{BASE_URL}/get_user_vault"))
@@ -96,7 +103,12 @@ impl<'a> Server<'a> {
         Ok(user_vault)
     }
 
-    async fn get_all_vaults_from_user(&self, user_name: String) -> reqwest::Result<Vec<UserVault>> {
+    async fn get_all_vaults_from_user(
+        &self,
+        user_name: impl Into<String>,
+    ) -> reqwest::Result<Vec<UserVault>> {
+        let user_name = user_name.into();
+
         let vaults_from_user: Vec<UserVault> = self
             .client
             .get(format!("{BASE_URL}/get_all_vaults_from_user"))
@@ -113,6 +125,20 @@ impl<'a> Server<'a> {
         );
 
         Ok(vaults_from_user)
+    }
+
+    async fn delete_user(&self, user_name: impl Into<String>) -> reqwest::Result<()> {
+        let user_name = user_name.into();
+
+        self.client
+            .post(format!("{BASE_URL}/delete_user"))
+            .json(&user_name)
+            .send()
+            .await?
+            .error_for_status()?;
+
+        println!("[INFO]: Deleted user `{user_name}`");
+        Ok(())
     }
 }
 
@@ -145,6 +171,7 @@ async fn main() -> Result<(), reqwest::Error> {
         println!("[4] To request the test account");
         println!("[5] To request the test accounts vault");
         println!("[6] To request all the vaults from the test account");
+        println!("[7] To delete a test account and their vaults");
         println!("[q] to exit");
 
         // This is only here for testing so .expect() is fine
@@ -154,32 +181,64 @@ async fn main() -> Result<(), reqwest::Error> {
 
         match buffer.trim() {
             "1" => server.create_user_table().await?,
-            "2" => server.create_user_account(String::from("Marwin")).await?,
+            "2" => {
+                println!("What should the test account be named?");
+                let mut name_buffer = String::new();
+                std::io::stdin().read_line(&mut name_buffer).unwrap();
+                server.create_user_account(name_buffer.trim()).await?
+            }
             "3" => {
+                println!("Enter the username for which to create the vault");
+                let mut name_buffer = String::new();
+                std::io::stdin().read_line(&mut name_buffer).unwrap();
+
+                println!("What should the test vault be named?");
+                let mut vault_buffer = String::new();
+                std::io::stdin().read_line(&mut vault_buffer).unwrap();
+
                 server
-                    .create_user_vault(
-                        String::from("Marwin"),
-                        String::from("Marwin's second Vault"),
-                    )
+                    .create_user_vault(name_buffer.trim(), vault_buffer.trim())
                     .await?
             }
             "4" => {
-                let user = server.get_user("Marwin".to_string()).await.unwrap();
+                println!("Which user?");
+                let mut name_buffer = String::new();
+                std::io::stdin().read_line(&mut name_buffer).unwrap();
+
+                let user = server.get_user(name_buffer.trim()).await.unwrap();
                 println!("Got user: {user:?}");
             }
             "5" => {
+                println!("Which user?");
+                let mut name_buffer = String::new();
+                std::io::stdin().read_line(&mut name_buffer).unwrap();
+
+                println!("Which vault?");
+                let mut vault_buffer = String::new();
+                std::io::stdin().read_line(&mut vault_buffer).unwrap();
+
                 let user_vault = server
-                    .get_user_vault("Marwin".to_string(), "Marwin's Vault".to_string())
+                    .get_user_vault(name_buffer.trim(), vault_buffer.trim())
                     .await
                     .unwrap();
                 println!("Got user vault: {user_vault:?}");
             }
             "6" => {
+                println!("Which user?");
+                let mut name_buffer = String::new();
+                std::io::stdin().read_line(&mut name_buffer).unwrap();
+
                 let all_user_vaults = server
-                    .get_all_vaults_from_user("Marwin".to_string())
+                    .get_all_vaults_from_user(name_buffer.trim())
                     .await
                     .unwrap();
                 println!("Got all user vaults: {all_user_vaults:?}");
+            }
+            "7" => {
+                println!("Which user?");
+                let mut name_buffer = String::new();
+                std::io::stdin().read_line(&mut name_buffer).unwrap();
+                server.delete_user(name_buffer.trim()).await?;
             }
             "q" => break,
             _ => {

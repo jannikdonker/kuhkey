@@ -1,7 +1,7 @@
 use axum::{
     Json, Router,
     extract::State,
-    routing::{get, post},
+    routing::{any, get, post},
 };
 use reqwest::StatusCode;
 use rusqlite::Connection;
@@ -146,6 +146,11 @@ async fn db_get_user_vault(
     let path = PathBuf::from(BASE_VAULT_PATH)
         .join(&user_id)
         .join(&vaultname);
+
+    if !path.exists() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
     let vault_name = path
         .file_name()
         .ok_or(StatusCode::NOT_FOUND)?
@@ -181,6 +186,25 @@ async fn db_get_all_vaults_from_user(
     Ok(Json(user_vaults))
 }
 
+async fn db_delete_user(
+    State(state): State<AppState>,
+    Json(username): Json<String>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = db_get_user_id(State(state.clone()), &username)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let vault_path = PathBuf::from(BASE_VAULT_PATH).join(&user_id);
+
+    std::fs::remove_dir_all(&vault_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let conn = state.connection.lock().unwrap();
+    conn.execute("DELETE FROM user WHERE name = ?1;", (&username,))
+        .unwrap();
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn db_get_user_id(State(state): State<AppState>, username: &str) -> rusqlite::Result<String> {
     let conn = state.connection.lock().unwrap();
     let mut statement = conn.prepare("SELECT id FROM user WHERE name = ?1")?;
@@ -208,6 +232,7 @@ fn app(conn: Connection) -> Router {
             "/api/v1/get_all_vaults_from_user",
             get(db_get_all_vaults_from_user),
         )
+        .route("/api/v1/delete_user", any(db_delete_user))
         .with_state(state)
 }
 
