@@ -140,6 +140,44 @@ impl<'a> Server<'a> {
         println!("[INFO]: Deleted user `{user_name}`");
         Ok(())
     }
+
+    async fn delete_vault(
+        &self,
+        user_name: impl Into<String>,
+        vault_name: impl Into<String>,
+    ) -> reqwest::Result<()> {
+        let user_name = user_name.into();
+        let vault_name = vault_name.into();
+
+        self.client
+            .post(format!("{BASE_URL}/delete_vault"))
+            .json(&(&user_name, &vault_name))
+            .send()
+            .await?
+            .error_for_status()?;
+
+        println!("[INFO]: Deleted vault `{vault_name}` from user `{user_name}`");
+        Ok(())
+    }
+
+    async fn change_user_name(
+        &self,
+        current_name: impl Into<String>,
+        new_name: impl Into<String>,
+    ) -> reqwest::Result<()> {
+        let current_name = current_name.into();
+        let new_name = new_name.into();
+
+        self.client
+            .post(format!("{BASE_URL}/change_user_name"))
+            .json(&(&current_name, &new_name))
+            .send()
+            .await?
+            .error_for_status()?;
+
+        println!("[INFO]: Successfully changed name from `{current_name}` to `{new_name}`");
+        Ok(())
+    }
 }
 
 // TODO: This will later be a lib.rs file, exposing just the Server struct and its's calls
@@ -167,11 +205,13 @@ async fn main() -> Result<(), reqwest::Error> {
     loop {
         println!("[1] To set up tables in the DB");
         println!("[2] To create a test account");
-        println!("[3] To create a test vault for the test account");
-        println!("[4] To request the test account");
-        println!("[5] To request the test accounts vault");
+        println!("[3] To create a test vault for a test account");
+        println!("[4] To request a test account");
+        println!("[5] To request a test account vault");
         println!("[6] To request all the vaults from the test account");
         println!("[7] To delete a test account and their vaults");
+        println!("[8] To delete a vault from a test account");
+        println!("[9] To change the username for a test account");
         println!("[q] to exit");
 
         // This is only here for testing so .expect() is fine
@@ -239,6 +279,32 @@ async fn main() -> Result<(), reqwest::Error> {
                 let mut name_buffer = String::new();
                 std::io::stdin().read_line(&mut name_buffer).unwrap();
                 server.delete_user(name_buffer.trim()).await?;
+            }
+            "8" => {
+                println!("Which user?");
+                let mut name_buffer = String::new();
+                std::io::stdin().read_line(&mut name_buffer).unwrap();
+
+                println!("Which vault?");
+                let mut vault_buffer = String::new();
+                std::io::stdin().read_line(&mut vault_buffer).unwrap();
+
+                server
+                    .delete_vault(name_buffer.trim(), vault_buffer.trim())
+                    .await?;
+            }
+            "9" => {
+                println!("Current username");
+                let mut current_buffer = String::new();
+                std::io::stdin().read_line(&mut current_buffer).unwrap();
+
+                println!("New username");
+                let mut new_buffer = String::new();
+                std::io::stdin().read_line(&mut new_buffer).unwrap();
+
+                server
+                    .change_user_name(current_buffer.trim(), new_buffer.trim())
+                    .await?;
             }
             "q" => break,
             _ => {

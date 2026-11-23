@@ -205,6 +205,42 @@ async fn db_delete_user(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn db_delete_vault(
+    State(state): State<AppState>,
+    Json((username, vaultname)): Json<(String, String)>,
+) -> Result<StatusCode, StatusCode> {
+    let user_id = db_get_user_id(State(state.clone()), &username)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let vault_path = PathBuf::from(BASE_VAULT_PATH)
+        .join(&user_id)
+        .join(&vaultname);
+
+    if !vault_path.exists() {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    std::fs::remove_file(&vault_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn db_change_user_name(
+    State(state): State<AppState>,
+    Json((current_name, new_name)): Json<(String, String)>,
+) -> Result<StatusCode, StatusCode> {
+    let conn = state.connection.lock().unwrap();
+
+    conn.execute(
+        "UPDATE user SET name = ?1 WHERE name = ?2;",
+        (&new_name, &current_name),
+    )
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn db_get_user_id(State(state): State<AppState>, username: &str) -> rusqlite::Result<String> {
     let conn = state.connection.lock().unwrap();
     let mut statement = conn.prepare("SELECT id FROM user WHERE name = ?1")?;
@@ -233,6 +269,8 @@ fn app(conn: Connection) -> Router {
             get(db_get_all_vaults_from_user),
         )
         .route("/api/v1/delete_user", any(db_delete_user))
+        .route("/api/v1/delete_vault", any(db_delete_vault))
+        .route("/api/v1/change_user_name", post(db_change_user_name))
         .with_state(state)
 }
 
