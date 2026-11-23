@@ -52,7 +52,7 @@ pub struct Entry {
 
 impl Entry {
     pub fn new(name: &str, password: &str, username: &str, url: &str, notes: &str) -> Self {
-        let timestamp = current_timestamp();
+        let timestamp = current_timestamp_secs();
         Entry {
             id: Uuid::new_v4(),
             name: name.to_owned(),
@@ -105,31 +105,35 @@ impl Entry {
     pub fn set_name(&mut self, new_name: &str) {
         self.name.zeroize();
         self.name.push_str(new_name);
-        self.modified = current_timestamp();
+        self.modified = current_timestamp_secs();
     }
 
     pub fn set_password(&mut self, new_password: &str) {
         self.password.zeroize();
         self.password.push_str(new_password);
-        self.modified = current_timestamp();
+        self.modified = current_timestamp_secs();
     }
 
     pub fn set_username(&mut self, new_username: &str) {
         self.username.zeroize();
         self.username.push_str(new_username);
-        self.modified = current_timestamp();
+        self.modified = current_timestamp_secs();
     }
 
     pub fn set_url(&mut self, new_url: &str) {
         self.url.zeroize();
         self.url.push_str(new_url);
-        self.modified = current_timestamp();
+        self.modified = current_timestamp_secs();
     }
 
     pub fn set_notes(&mut self, new_notes: &str) {
         self.notes.zeroize();
         self.notes.push_str(new_notes);
-        self.modified = current_timestamp();
+        self.modified = current_timestamp_secs();
+    }
+
+    pub fn set_last_used(&mut self) {
+        self.last_used = current_timestamp_secs();
     }
 
     fn get_byte_size(&self) -> usize {
@@ -217,7 +221,7 @@ impl Entry {
     }
 }
 
-fn current_timestamp() -> u64 {
+fn current_timestamp_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
