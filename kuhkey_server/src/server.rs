@@ -33,7 +33,7 @@ pub struct UserVault {
 }
 
 /// POST /api/v1/create_tables
-async fn db_create_tables(State(state): State<AppState>) -> StatusCode {
+async fn db_create_tables(State(state): State<AppState>) -> Result<StatusCode, StatusCode> {
     let conn = state.connection.lock().unwrap();
     conn.execute(
         "CREATE TABLE IF NOT EXISTS user (
@@ -42,17 +42,16 @@ async fn db_create_tables(State(state): State<AppState>) -> StatusCode {
         )",
         (),
     )
-    // Terrible
-    .unwrap();
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    StatusCode::CREATED
+    Ok(StatusCode::CREATED)
 }
 
 /// POST /api/v1/create_user
 async fn db_create_user(
     State(state): State<AppState>,
     Json(user_account): Json<UserAccount>,
-) -> StatusCode {
+) -> Result<StatusCode, StatusCode> {
     // Unwrap here is safe because we are not in a multithreaded environment
     let conn = state.connection.lock().unwrap();
     let rows = conn
@@ -61,22 +60,22 @@ async fn db_create_user(
             "INSERT INTO user (id, name) VALUES (?1, ?2) ON CONFLICT(name) DO NOTHING;",
             (&user_account.id, &user_account.name),
         )
-        .unwrap();
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // This is only needed for our tests right now
     // In case we create the same user multiple times, do not create a new vault for them
     if rows == 0 {
-        return StatusCode::OK;
+        return Ok(StatusCode::OK);
     }
 
     // Create a vault directory for the user
     // This is just how we have to do it right now..
     let result = std::fs::create_dir(format!("{BASE_VAULT_PATH}/{}", user_account.id));
     match result {
-        Ok(_) => StatusCode::CREATED,
+        Ok(_) => Ok(StatusCode::CREATED),
         Err(err) => {
             eprintln!("Error while creating vault directory for user: {:?}", err);
-            StatusCode::INTERNAL_SERVER_ERROR
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
 }
@@ -85,9 +84,9 @@ async fn db_create_user(
 async fn db_create_user_vault(
     State(state): State<AppState>,
     Json(user_vault): Json<UserVault>,
-) -> StatusCode {
+) -> Result<StatusCode, StatusCode> {
     let Ok(user_id) = db_get_user_id(State(state), &user_vault.user_name).await else {
-        return StatusCode::INTERNAL_SERVER_ERROR;
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     };
 
     let result = std::fs::File::create(format!(
@@ -95,10 +94,10 @@ async fn db_create_user_vault(
         &user_id, user_vault.vault_name
     ));
     match result {
-        Ok(_) => StatusCode::CREATED,
+        Ok(_) => Ok(StatusCode::CREATED),
         Err(err) => {
             eprintln!("Error while creating vault for user: {:?}", err);
-            StatusCode::INTERNAL_SERVER_ERROR
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
 }
