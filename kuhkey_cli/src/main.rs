@@ -201,16 +201,16 @@ fn cli_gen_password(
     let options = if user_options {
         PasswordOptions {
             length,
-            uppercase: uppercase,
-            lowercase: lowercase,
-            numbers: numbers,
-            symbols: symbols,
-            exclude_lookalikes: exclude_lookalikes,
+            uppercase,
+            lowercase,
+            numbers,
+            symbols,
+            exclude_lookalikes,
         }
     } else {
         PasswordOptions {
             length,
-            exclude_lookalikes: exclude_lookalikes,
+            exclude_lookalikes,
             ..Default::default()
         }
     };

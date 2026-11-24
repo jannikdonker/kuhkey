@@ -520,7 +520,7 @@ impl VaultUnlocked {
         self.entries.push(entry);
     }
 
-    /// Remove an entry from the unlocked vault. 
+    /// Remove an entry from the unlocked vault.
     /// Returns None if the entry is not in the vault.
     pub fn remove_entry(&mut self, id: &Uuid) -> Option<Entry> {
         let index = self.entries.iter().position(|e| e.get_id() == id)?;

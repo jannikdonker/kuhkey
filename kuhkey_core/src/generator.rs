@@ -134,11 +134,11 @@ fn password_has_reqs(pw: &str, opts: &PasswordOptions) -> bool {
     // 1 0 0
     // 1 1 1
     // XNOR or just ==
-    return (opts.uppercase == contains_upper)
+    (opts.uppercase == contains_upper)
         && (opts.lowercase == contains_lower)
         && (opts.numbers == contains_numbers)
         && (opts.symbols == contains_symbols)
-        && (!opts.exclude_lookalikes || !contains_lookalikes);
+        && (!opts.exclude_lookalikes || !contains_lookalikes)
 }
 
 #[cfg(test)]
