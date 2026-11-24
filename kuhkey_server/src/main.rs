@@ -1,6 +1,7 @@
 use std::time::Duration;
 
-use kuhkey_server::{UserAccount, UserVault, start_server};
+mod server;
+use server::{UserAccount, UserVault, start_server};
 
 const BASE_URL: &str = "http://localhost:8080/api/v1";
 
@@ -55,8 +56,69 @@ impl<'a> Server<'a> {
         );
         Ok(())
     }
+
+    async fn get_user(&self, user_name: String) -> reqwest::Result<UserAccount> {
+        let user_account: UserAccount = self
+            .client
+            .get(format!("{BASE_URL}/get_user"))
+            .json(&user_name)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+
+        println!("[INFO]: Successfully requested user `{}`", user_name);
+
+        Ok(user_account)
+    }
+
+    async fn get_user_vault(
+        &self,
+        user_name: String,
+        vault_name: String,
+    ) -> reqwest::Result<UserVault> {
+        let user_vault: UserVault = self
+            .client
+            .get(format!("{BASE_URL}/get_user_vault"))
+            .json(&(&user_name, &vault_name))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+
+        println!(
+            "[INFO]: Successfully requested user vault from `{}` and vault name `{}`",
+            user_name, vault_name
+        );
+
+        Ok(user_vault)
+    }
+
+    async fn get_all_vaults_from_user(&self, user_name: String) -> reqwest::Result<Vec<UserVault>> {
+        let vaults_from_user: Vec<UserVault> = self
+            .client
+            .get(format!("{BASE_URL}/get_all_vaults_from_user"))
+            .json(&user_name)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+
+        println!(
+            "[INFO]: Successfully requested all vaults from user `{}`",
+            user_name
+        );
+
+        Ok(vaults_from_user)
+    }
 }
 
+// TODO: This will later be a lib.rs file, exposing just the Server struct and its's calls
+//
+// For now, leave this here so we can test the server and it's functions
 #[tokio::main]
 async fn main() -> Result<(), reqwest::Error> {
     // Spawn the server in a background task
@@ -72,11 +134,61 @@ async fn main() -> Result<(), reqwest::Error> {
     let client = reqwest::Client::new();
     let server = Server { client: &client };
 
-    server.create_user_table().await?;
-    server.create_user_account(String::from("Marwin")).await?;
-    server
-        .create_user_vault(String::from("Marwin"), String::from("Marwin's Vault"))
-        .await?;
+    let mut buffer = String::new();
 
+    println!("KuhKey Server Test environment");
+
+    loop {
+        println!("[1] To set up tables in the DB");
+        println!("[2] To create a test account");
+        println!("[3] To create a test vault for the test account");
+        println!("[4] To request the test account");
+        println!("[5] To request the test accounts vault");
+        println!("[6] To request all the vaults from the test account");
+        println!("[q] to exit");
+
+        // This is only here for testing so .expect() is fine
+        std::io::stdin()
+            .read_line(&mut buffer)
+            .expect("failed to read from stdin");
+
+        match buffer.trim() {
+            "1" => server.create_user_table().await?,
+            "2" => server.create_user_account(String::from("Marwin")).await?,
+            "3" => {
+                server
+                    .create_user_vault(
+                        String::from("Marwin"),
+                        String::from("Marwin's second Vault"),
+                    )
+                    .await?
+            }
+            "4" => {
+                let user = server.get_user("Marwin".to_string()).await.unwrap();
+                println!("Got user: {user:?}");
+            }
+            "5" => {
+                let user_vault = server
+                    .get_user_vault("Marwin".to_string(), "Marwin's Vault".to_string())
+                    .await
+                    .unwrap();
+                println!("Got user vault: {user_vault:?}");
+            }
+            "6" => {
+                let all_user_vaults = server
+                    .get_all_vaults_from_user("Marwin".to_string())
+                    .await
+                    .unwrap();
+                println!("Got all user vaults: {all_user_vaults:?}");
+            }
+            "q" => break,
+            _ => {
+                println!("Unknown command");
+            }
+        }
+
+        println!("\n\n");
+        buffer.clear();
+    }
     Ok(())
 }

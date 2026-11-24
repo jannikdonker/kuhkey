@@ -98,3 +98,6 @@ temp/
 *.orig
 *.rej
 assets/ttt
+
+# telegram call demo, lives in its own repo
+kuhkey_telegram/
