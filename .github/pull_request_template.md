@@ -4,7 +4,7 @@
 
 Closes #
 
-## Checklist (Definition of Done)
+## Checklist 
 
 - [ ] Acceptance criteria of the linked issue are met
 - [ ] `cargo fmt`, `cargo clippy` and `cargo test` pass
