@@ -3,6 +3,7 @@ use argon2::{
     Algorithm::{self},
     Argon2, Params, Version,
 };
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chacha20poly1305::{
@@ -414,27 +415,29 @@ impl VaultLocked {
         })
     }
 
-    /// Writes the locked vault to `<data_dir>/<APP_ID>/<id>.barn` via a temporary file.
-    pub fn write_to_disk(&self) -> Result<()> {
-        let dir = data_dir()
-            .context("could not find data directory")?
-            .join(APP_ID);
-        std::fs::create_dir_all(&dir)?;
+    /// Writes the locked vault to `path`, or to `<data_dir>/<APP_ID>/<id>.barn` if `path` is `None`, via a temporary file, returning the written path.
+    pub fn write_to_disk(&self, path: Option<&Path>) -> Result<PathBuf> {
+        let path = match path {
+            Some(p) => p.to_path_buf(),
+            None => data_dir()
+                .context("could not find data directory")?
+                .join(APP_ID)
+                .join(format!("{}.barn", self.header.id)),
+        };
+        if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent)?;
+        }
 
-        let path = dir.join(format!("{}.barn", self.header.id));
-        let tmp_path = dir.join(format!("{}.barn.tmp", self.header.id));
+        let tmp_path = path.with_added_extension("tmp");
+
         std::fs::write(&tmp_path, self.to_bytes())?;
         std::fs::rename(&tmp_path, &path)?;
-        Ok(())
+        Ok(path)
     }
 
-    /// Reads a locked vault with `id` from `<data_dir>/<APP_ID>/<id>.barn`.
-    pub fn read_from_disk(id: &Uuid) -> Result<Self> {
-        let path = data_dir()
-            .context("could not find data directory")?
-            .join(APP_ID)
-            .join(format!("{id}.barn"));
-        let bytes = std::fs::read(&path)?;
+    /// Reads a locked vault from `path`.
+    pub fn read_from_disk(path: &Path) -> Result<Self> {
+        let bytes = std::fs::read(path)?;
         Self::from_bytes(&bytes)
     }
 }
