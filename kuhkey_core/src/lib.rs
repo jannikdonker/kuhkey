@@ -12,9 +12,11 @@ use chacha20poly1305::{
 use uuid::Uuid;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
+use ::dirs::data_dir;
+
 pub mod generator;
 
-pub const APP_ID: &str = "de.edah.kuhkey";
+pub const APP_ID: &str = "de.kuhkey";
 
 const MAGIC_BYTES: [u8; 4] = *b"KUHV";
 const VAULT_VERSION: u32 = 1;
@@ -410,6 +412,30 @@ impl VaultLocked {
             header,
             payload: payload.to_vec(),
         })
+    }
+
+    /// Writes the locked vault to `<data_dir>/<APP_ID>/<id>.barn` via a temporary file.
+    pub fn write_to_disk(&self) -> Result<()> {
+        let dir = data_dir()
+            .context("could not find data directory")?
+            .join(APP_ID);
+        std::fs::create_dir_all(&dir)?;
+
+        let path = dir.join(format!("{}.barn", self.header.id));
+        let tmp_path = dir.join(format!("{}.barn.tmp", self.header.id));
+        std::fs::write(&tmp_path, self.to_bytes())?;
+        std::fs::rename(&tmp_path, &path)?;
+        Ok(())
+    }
+
+    /// Reads a locked vault with `id` from `<data_dir>/<APP_ID>/<id>.barn`.
+    pub fn read_from_disk(id: &Uuid) -> Result<Self> {
+        let path = data_dir()
+            .context("could not find data directory")?
+            .join(APP_ID)
+            .join(format!("{id}.barn"));
+        let bytes = std::fs::read(&path)?;
+        Self::from_bytes(&bytes)
     }
 }
 
