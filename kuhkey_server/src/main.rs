@@ -37,10 +37,7 @@ impl<'a> Server<'a> {
 
         self.client
             .post(format!("{BASE_URL}/create_user"))
-            .json(&UserAccount {
-                id: uuid::Uuid::new_v4().to_string(),
-                name: user_name,
-            })
+            .json(&user_name)
             .send()
             .await?
             .error_for_status()?;

@@ -50,15 +50,16 @@ async fn db_create_tables(State(state): State<AppState>) -> Result<StatusCode, S
 /// POST /api/v1/create_user
 async fn db_create_user(
     State(state): State<AppState>,
-    Json(user_account): Json<UserAccount>,
+    Json(username): Json<String>,
 ) -> Result<StatusCode, StatusCode> {
     // Unwrap here is safe because we are not in a multithreaded environment
     let conn = state.connection.lock().unwrap();
+    let user_id = String::from(uuid::Uuid::new_v4());
     let rows = conn
         .execute(
             // TODO: This ignores users with the same name so we don't have multiple entries for the same user
             "INSERT INTO user (id, name) VALUES (?1, ?2) ON CONFLICT(name) DO NOTHING;",
-            (&user_account.id, &user_account.name),
+            (&user_id, &username),
         )
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -70,7 +71,7 @@ async fn db_create_user(
 
     // Create a vault directory for the user
     // This is just how we have to do it right now..
-    let result = std::fs::create_dir(format!("{BASE_VAULT_PATH}/{}", user_account.id));
+    let result = std::fs::create_dir(format!("{BASE_VAULT_PATH}/{}", &user_id));
     match result {
         Ok(_) => Ok(StatusCode::CREATED),
         Err(err) => {
