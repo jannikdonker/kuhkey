@@ -1132,6 +1132,7 @@ dependencies = [
 name = "kuhkey_server"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
  "reqwest",
  "rusqlite",

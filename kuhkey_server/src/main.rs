@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 mod server;
+use anyhow::anyhow;
 use server::{UserAccount, UserVault, start_server};
 
 const BASE_URL: &str = "http://localhost:8080/api/v1";
@@ -9,8 +10,18 @@ struct Server<'a> {
     client: &'a reqwest::Client,
 }
 
+/// Checks if the string contains illegal characters like `/` and returns an error if thats the case
+#[inline]
+fn string_has_illegal_chars(input: &str) -> anyhow::Result<()> {
+    if input.contains("/") {
+        Err(anyhow!("String contains illegal characters"))
+    } else {
+        Ok(())
+    }
+}
+
 impl<'a> Server<'a> {
-    async fn create_user_table(&self) -> reqwest::Result<()> {
+    async fn create_user_table(&self) -> anyhow::Result<()> {
         self.client
             .post(format!("{BASE_URL}/create_tables"))
             .send()
@@ -20,12 +31,15 @@ impl<'a> Server<'a> {
         Ok(())
     }
 
-    async fn create_user_account(&self, name: impl Into<String>) -> reqwest::Result<()> {
+    async fn create_user_account(&self, user_name: impl Into<String>) -> anyhow::Result<()> {
+        let user_name = user_name.into();
+        string_has_illegal_chars(&user_name)?;
+
         self.client
             .post(format!("{BASE_URL}/create_user"))
             .json(&UserAccount {
                 id: uuid::Uuid::new_v4().to_string(),
-                name: name.into(),
+                name: user_name,
             })
             .send()
             .await?
@@ -39,9 +53,12 @@ impl<'a> Server<'a> {
         &self,
         user_name: impl Into<String>,
         vault_name: impl Into<String>,
-    ) -> reqwest::Result<()> {
+    ) -> anyhow::Result<()> {
         let user_name = user_name.into();
         let vault_name = vault_name.into();
+
+        string_has_illegal_chars(&user_name)?;
+        string_has_illegal_chars(&vault_name)?;
 
         self.client
             .post(format!("{BASE_URL}/create_user_vault"))
@@ -60,8 +77,11 @@ impl<'a> Server<'a> {
         Ok(())
     }
 
-    async fn get_user(&self, user_name: impl Into<String>) -> reqwest::Result<UserAccount> {
+    async fn get_user(&self, user_name: impl Into<String>) -> anyhow::Result<UserAccount> {
         let user_name = user_name.into();
+
+        string_has_illegal_chars(&user_name)?;
+
         let user_account: UserAccount = self
             .client
             .get(format!("{BASE_URL}/get_user"))
@@ -81,9 +101,12 @@ impl<'a> Server<'a> {
         &self,
         user_name: impl Into<String>,
         vault_name: impl Into<String>,
-    ) -> reqwest::Result<UserVault> {
+    ) -> anyhow::Result<UserVault> {
         let user_name = user_name.into();
         let vault_name = vault_name.into();
+
+        string_has_illegal_chars(&user_name)?;
+        string_has_illegal_chars(&vault_name)?;
 
         let user_vault: UserVault = self
             .client
@@ -106,8 +129,10 @@ impl<'a> Server<'a> {
     async fn get_all_vaults_from_user(
         &self,
         user_name: impl Into<String>,
-    ) -> reqwest::Result<Vec<UserVault>> {
+    ) -> anyhow::Result<Vec<UserVault>> {
         let user_name = user_name.into();
+
+        string_has_illegal_chars(&user_name)?;
 
         let vaults_from_user: Vec<UserVault> = self
             .client
@@ -127,8 +152,10 @@ impl<'a> Server<'a> {
         Ok(vaults_from_user)
     }
 
-    async fn delete_user(&self, user_name: impl Into<String>) -> reqwest::Result<()> {
+    async fn delete_user(&self, user_name: impl Into<String>) -> anyhow::Result<()> {
         let user_name = user_name.into();
+
+        string_has_illegal_chars(&user_name)?;
 
         self.client
             .post(format!("{BASE_URL}/delete_user"))
@@ -145,9 +172,12 @@ impl<'a> Server<'a> {
         &self,
         user_name: impl Into<String>,
         vault_name: impl Into<String>,
-    ) -> reqwest::Result<()> {
+    ) -> anyhow::Result<()> {
         let user_name = user_name.into();
         let vault_name = vault_name.into();
+
+        string_has_illegal_chars(&user_name)?;
+        string_has_illegal_chars(&vault_name)?;
 
         self.client
             .post(format!("{BASE_URL}/delete_vault"))
@@ -164,9 +194,12 @@ impl<'a> Server<'a> {
         &self,
         current_name: impl Into<String>,
         new_name: impl Into<String>,
-    ) -> reqwest::Result<()> {
+    ) -> anyhow::Result<()> {
         let current_name = current_name.into();
         let new_name = new_name.into();
+
+        string_has_illegal_chars(&current_name)?;
+        string_has_illegal_chars(&new_name)?;
 
         self.client
             .post(format!("{BASE_URL}/change_user_name"))
@@ -184,7 +217,7 @@ impl<'a> Server<'a> {
 //
 // For now, leave this here so we can test the server and it's functions
 #[tokio::main]
-async fn main() -> Result<(), reqwest::Error> {
+async fn main() -> anyhow::Result<()> {
     // Spawn the server in a background task
     tokio::spawn(async {
         if let Err(e) = start_server().await {
