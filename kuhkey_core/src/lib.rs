@@ -4,7 +4,7 @@ use argon2::{
     Argon2, Params, Version,
 };
 use std::path::{Path, PathBuf};
-use web_time::{SystemTime, UNIX_EPOCH, Duration};
+use web_time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chacha20poly1305::{
     KeyInit, XChaCha20Poly1305, XNonce,
@@ -27,7 +27,7 @@ const KEY_LEN: usize = 32;
 
 /// MAGIC_BYTES + VERSION + UUID + NONCE + SALT + KdFParams + name length (u8).
 /// The variable-length vault name follows directly after.
-pub const HEADER_FIXED_LEN: usize = 4 + 4 + 16 + NONCE_LEN + SALT_LEN + 12 + 1;
+const HEADER_FIXED_LEN: usize = 4 + 4 + 16 + NONCE_LEN + SALT_LEN + 12 + 1;
 
 /// The name length is stored as a u8
 const MAX_VAULT_NAME_LEN: usize = u8::MAX as usize;
@@ -39,6 +39,7 @@ const MAX_T_COST: u32 = 64;
 /// Refuse to run Argon2 with more than 16 lanes
 const MAX_P_COST: u32 = 16;
 
+/// A single credential entry stored in a vault, zeroized on drop.
 #[derive(Clone, PartialEq, Zeroize, ZeroizeOnDrop)]
 pub struct Entry {
     #[zeroize(skip)] // id doesnt need to be zeroized
@@ -54,6 +55,7 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// Creates a new entry with a generated UUID, current timestamps for `created` and `modified`, and `last_used` set to the Unix epoch.
     pub fn new(name: &str, password: &str, username: &str, url: &str, notes: &str) -> Self {
         let timestamp = current_timestamp_secs();
         Entry {
@@ -69,72 +71,87 @@ impl Entry {
         }
     }
 
+    /// Returns the entry's unique identifier.
     pub fn get_id(&self) -> &Uuid {
         &self.id
     }
 
+    /// Returns the creation timestamp as a `SystemTime`.
     pub fn get_created(&self) -> SystemTime {
         systemtime_from_timestamp(self.created)
     }
 
+    /// Returns the last modification timestamp as a `SystemTime`.
     pub fn get_modified(&self) -> SystemTime {
         systemtime_from_timestamp(self.modified)
     }
 
+    /// Returns the last-used timestamp as a `SystemTime`.
     pub fn get_last_used(&self) -> SystemTime {
         systemtime_from_timestamp(self.last_used)
     }
 
+    /// Returns the entry's name.
     pub fn get_name(&self) -> &str {
         &self.name
     }
 
+    /// Returns the entry's password.
     pub fn get_password(&self) -> &str {
         &self.password
     }
 
+    /// Returns the entry's username.
     pub fn get_username(&self) -> &str {
         &self.username
     }
 
+    /// Returns the entry's URL.
     pub fn get_url(&self) -> &str {
         &self.url
     }
 
+    /// Returns the entry's notes.
     pub fn get_notes(&self) -> &str {
         &self.notes
     }
 
+    /// Replaces the entry's name, zeroizing the old value and updating `modified`.
     pub fn set_name(&mut self, new_name: &str) {
         self.name.zeroize();
         self.name.push_str(new_name);
         self.modified = current_timestamp_secs();
     }
 
+    /// Replaces the entry's password, zeroizing the old value and updating `modified`.
     pub fn set_password(&mut self, new_password: &str) {
         self.password.zeroize();
         self.password.push_str(new_password);
         self.modified = current_timestamp_secs();
     }
 
+    /// Replaces the entry's username, zeroizing the old value and updating `modified`.
     pub fn set_username(&mut self, new_username: &str) {
         self.username.zeroize();
         self.username.push_str(new_username);
         self.modified = current_timestamp_secs();
     }
 
+    /// Replaces the entry's URL, zeroizing the old value and updating `modified`.
     pub fn set_url(&mut self, new_url: &str) {
         self.url.zeroize();
         self.url.push_str(new_url);
         self.modified = current_timestamp_secs();
     }
 
+    /// Replaces the entry's notes, zeroizing the old value and updating `modified`.
     pub fn set_notes(&mut self, new_notes: &str) {
         self.notes.zeroize();
         self.notes.push_str(new_notes);
         self.modified = current_timestamp_secs();
     }
 
+    /// Updates the `last_used` timestamp to the current time.
     pub fn set_last_used(&mut self) {
         self.last_used = current_timestamp_secs();
     }
@@ -386,26 +403,31 @@ impl VaultHeader {
     }
 }
 
+/// An encrypted vault containing a plaintext header and an authenticated ciphertext payload.
 pub struct VaultLocked {
     header: VaultHeader,
     payload: Vec<u8>,
 }
 
 impl VaultLocked {
+    /// Returns the vault's name.
     pub fn get_name(&self) -> &str {
         &self.header.name
     }
 
+    /// Returns the vault's unique identifier.
     pub fn get_id(&self) -> &Uuid {
         &self.header.id
     }
 
+    /// Serializes the locked vault (header followed by encrypted payload) into bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = self.header.to_bytes();
         bytes.extend_from_slice(&self.payload);
         bytes
     }
 
+    /// Parses a locked vault from its serialized byte representation.
     pub fn from_bytes(b: &[u8]) -> Result<Self> {
         let (header, payload) = VaultHeader::from_bytes(b)?;
 
@@ -442,12 +464,15 @@ impl VaultLocked {
     }
 }
 
+/// A decrypted vault holding its header and plaintext entries in memory.
 pub struct VaultUnlocked {
     header: VaultHeader,
     entries: Vec<Entry>,
 }
 
 impl VaultUnlocked {
+    /// Creates a new empty unlocked vault with the given name and default KDF parameters.
+    /// Fails if `name` exceeds `MAX_VAULT_NAME_LEN` bytes.
     pub fn new(name: &str) -> Result<Self> {
         Ok(Self {
             header: VaultHeader::new(name, KdfParams::default())?,
@@ -455,14 +480,17 @@ impl VaultUnlocked {
         })
     }
 
+    /// Returns the vault's name.
     pub fn get_name(&self) -> &str {
         &self.header.name
     }
 
+    /// Returns the vault's unique identifier.
     pub fn get_id(&self) -> &Uuid {
         &self.header.id
     }
 
+    /// Updates the vault's name. Fails if `new_name` exceeds `MAX_VAULT_NAME_LEN` bytes.
     pub fn set_name(&mut self, new_name: &str) -> Result<()> {
         if new_name.len() > MAX_VAULT_NAME_LEN {
             bail!("vault name to long")
