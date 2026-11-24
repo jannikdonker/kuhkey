@@ -499,6 +499,33 @@ impl VaultUnlocked {
         self.header.name.push_str(new_name);
         Ok(())
     }
+
+    /// Return all entries of a vault as a slice.
+    pub fn get_entries(&self) -> &[Entry] {
+        &self.entries
+    }
+
+    /// Return an entry ref based on its Uuid.
+    pub fn get_entry(&self, id: &Uuid) -> Option<&Entry> {
+        self.entries.iter().find(|e| e.get_id() == id)
+    }
+
+    /// Return an entry mutable ref based on its Uuid.
+    pub fn get_entry_mut(&mut self, id: &Uuid) -> Option<&mut Entry> {
+        self.entries.iter_mut().find(|e| e.get_id() == id)
+    }
+
+    /// Add an entry to the unlocked vault.
+    pub fn add_entry(&mut self, entry: Entry) {
+        self.entries.push(entry);
+    }
+
+    /// Remove an entry from the unlocked vault. 
+    /// Returns None if the entry is not in the vault.
+    pub fn remove_entry(&mut self, id: &Uuid) -> Option<Entry> {
+        let index = self.entries.iter().position(|e| e.get_id() == id)?;
+        Some(self.entries.remove(index))
+    }
 }
 
 fn derive_key(password: &[u8], salt: &[u8], p: KdfParams) -> Result<Zeroizing<[u8; KEY_LEN]>> {
