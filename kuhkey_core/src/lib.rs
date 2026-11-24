@@ -4,8 +4,7 @@ use argon2::{
     Argon2, Params, Version,
 };
 use std::path::{Path, PathBuf};
-use std::time::Duration;
-use web_time::{SystemTime, UNIX_EPOCH};
+use web_time::{SystemTime, UNIX_EPOCH, Duration};
 
 use chacha20poly1305::{
     KeyInit, XChaCha20Poly1305, XNonce,
