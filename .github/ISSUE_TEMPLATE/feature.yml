@@ -6,9 +6,11 @@ body:
   - type: markdown
     attributes:
       value: |
-        Start the title with the area, e.g. `core:`, `cli:`, `ui:`, `desktop:`, `ext:`, `server:`.
-        Add the matching area label after creating the issue.
+        Start the title with the area:
+        - Code: `core:`, `cli:`, `ui:`, `desktop:`, `ext:`, `server:`, `tui:`
+        - Other work: `ci:` (workflows, checks), `docs:` (documentation), `chore:` (tooling, dependencies, cleanup)
 
+        Add the matching area label after creating the issue.
   - type: textarea
     id: description
     attributes:

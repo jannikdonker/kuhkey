@@ -6,7 +6,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Start the title with the area, e.g. `core:`, `cli:`, `ui:`, `desktop:`, `ext:`, `server:`.
+        Start the title with the area:
+        - Code: `core:`, `cli:`, `ui:`, `desktop:`, `ext:`, `server:`, `tui:`
+        - Other: `ci:` (workflows, checks)
 
   - type: textarea
     id: actual
