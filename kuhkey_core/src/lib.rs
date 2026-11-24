@@ -3,6 +3,7 @@ use argon2::{
     Algorithm::{self},
     Argon2, Params, Version,
 };
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chacha20poly1305::{
@@ -12,9 +13,11 @@ use chacha20poly1305::{
 use uuid::Uuid;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
+use ::dirs::data_dir;
+
 pub mod generator;
 
-pub const APP_ID: &str = "de.edah.kuhkey";
+pub const APP_ID: &str = "de.kuhkey";
 
 const MAGIC_BYTES: [u8; 4] = *b"KUHV";
 const VAULT_VERSION: u32 = 1;
@@ -410,6 +413,32 @@ impl VaultLocked {
             header,
             payload: payload.to_vec(),
         })
+    }
+
+    /// Writes the locked vault to `path`, or to `<data_dir>/<APP_ID>/<id>.barn` if `path` is `None`, via a temporary file, returning the written path.
+    pub fn write_to_disk(&self, path: Option<&Path>) -> Result<PathBuf> {
+        let path = match path {
+            Some(p) => p.to_path_buf(),
+            None => data_dir()
+                .context("could not find data directory")?
+                .join(APP_ID)
+                .join(format!("{}.barn", self.header.id)),
+        };
+        if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let tmp_path = path.with_added_extension("tmp");
+
+        std::fs::write(&tmp_path, self.to_bytes())?;
+        std::fs::rename(&tmp_path, &path)?;
+        Ok(path)
+    }
+
+    /// Reads a locked vault from `path`.
+    pub fn read_from_disk(path: &Path) -> Result<Self> {
+        let bytes = std::fs::read(path)?;
+        Self::from_bytes(&bytes)
     }
 }
 
