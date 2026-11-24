@@ -7,7 +7,27 @@
     <meta name="manifest.type" content="browser_action" />
   </head>
   <body>
-    <header class="title-box">
+    <!-- login frontend only-->
+    <form id="login" class="login-box">
+      <img class="login-cow" alt="KuhKey cow" />
+      <div class="title">KuhKey</div>
+      <div class="login-subtitle">Your Password Manager</div>
+
+      <div class="login-card">
+        <div class="field">
+          <div class="field-label">Username</div>
+          <input id="login-username" class="login-input" type="text" placeholder="Username" autocomplete="username" spellcheck="false" autofocus />
+        </div>
+        <div class="field">
+          <div class="field-label">Password</div>
+          <input id="login-password" class="login-input" type="password" placeholder="Password" autocomplete="current-password" />
+        </div>
+      </div>
+
+      <button class="field-edit primary login-button" type="submit">Log in</button>
+    </form>
+
+    <header class="title-box" hidden>
       <div class="title">KuhKey</div>
       <div class="title-actions">
         <div class="subtitle">Your Password Manager</div>
@@ -15,7 +35,7 @@
       </div>
     </header>
 
-    <main class="layout">
+    <main class="layout" hidden>
       <nav id="entries" class="entry-list"></nav> <!--left-->
 
       <section id="detail" class="detail">

@@ -19,6 +19,20 @@ renderList(mockEntries);
 showCow();
 addButton.addEventListener('click', () => showEntryForm());
 
+// login screen --> any user + any psw works
+const login = document.querySelector<HTMLFormElement>('#login')!;
+login.querySelector<HTMLImageElement>('.login-cow')!.src = cowurl;
+login.addEventListener('submit', (e) => {
+  e.preventDefault(); // don't reload the page
+  login.remove();
+  document.querySelector<HTMLElement>('.title-box')!.hidden = false;
+  document.querySelector<HTMLElement>('.layout')!.hidden = false;
+
+  // empty username -> just "welcome back!"
+  const user = login.querySelector<HTMLInputElement>('#login-username')!.value.trim();
+  showCopyNotify(user ? `Welcome back ${user}!` : 'Welcome back!');
+});
+
 // draws the list, the selected entry gets highlighted + scrolled to
 function renderList(entries: Entry[], selected?: Entry) {
   list.replaceChildren();

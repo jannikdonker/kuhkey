@@ -1,9 +1,9 @@
 use std::char;
 
+use anyhow::{Result, bail};
 use chacha20poly1305::aead::common::getrandom;
 use rand::Rng;
-use rand_chacha::{ChaCha12Rng, rand_core::SeedableRng};
-use anyhow::{Result, bail};
+use rand_chacha::{ChaCha20Rng, rand_core::SeedableRng};
 
 pub const UPPERCASE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 pub const LOWERCASE: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
@@ -13,6 +13,7 @@ pub const NUMBERS: &[u8] = b"0123456789";
 pub const SYMBOLS: &[u8] = b"!@#$%^&*()-_=+[]{};:,.<>/?~";
 /// Characters that are easy to mix up when read off a screen or typed by hand.
 pub const LOOKALIKES: &[u8] = b"0Oo1Il";
+pub const MAXIMUM_PASSWORD_LENGTH: usize = 256;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PasswordOptions {
@@ -53,9 +54,12 @@ pub fn generate_password(opts: &PasswordOptions) -> Result<String> {
     if opts.length < min_len {
         bail!("password length is smaller than the number of required character classes")
     }
+    if opts.length > MAXIMUM_PASSWORD_LENGTH {
+        bail!("password length is larger than the maximum length of {MAXIMUM_PASSWORD_LENGTH}")
+    }
 
     let seed = generate_random_seed()?;
-    let mut rng = ChaCha12Rng::from_seed(seed);
+    let mut rng = ChaCha20Rng::from_seed(seed);
 
     let mut charset: Vec<u8> = Vec::new();
 
