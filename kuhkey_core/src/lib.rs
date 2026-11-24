@@ -506,19 +506,26 @@ impl VaultUnlocked {
         &self.entries
     }
 
+    /// Return an entry ref based on its Uuid.
+    pub fn get_entry(&self, id: &Uuid) -> Option<&Entry> {
+        self.entries.iter().find(|e| e.get_id() == id)
+    }
+
+    /// Return an entry mutable ref based on its Uuid.
+    pub fn get_entry_mut(&mut self, id: &Uuid) -> Option<&mut Entry> {
+        self.entries.iter_mut().find(|e| e.get_id() == id)
+    }
+
     /// Add an entry to the unlocked vault.
     pub fn add_entry(&mut self, entry: Entry) {
         self.entries.push(entry);
     }
 
     /// Remove an entry from the unlocked vault. 
-    /// Returns an error if the entry is not in the vault.
-    pub fn remove_entry(&mut self, id: &Uuid) -> Result<Entry> {
-        let index = match self.entries.iter().position(|e| e.get_id() == id) {
-            Some(index) => index,
-            None => bail!("Entry not in vault")
-        };
-        Ok(self.entries.remove(index))
+    /// Returns None if the entry is not in the vault.
+    pub fn remove_entry(&mut self, id: &Uuid) -> Option<Entry> {
+        let index = self.entries.iter().position(|e| e.get_id() == id)?;
+        Some(self.entries.remove(index))
     }
 }
 
