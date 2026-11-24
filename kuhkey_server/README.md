@@ -20,13 +20,3 @@ get_user_vault(username: String) -> Result<UserVault>;
 get_all_vaults_from_user(username: String) -> Result<Vec<UserVault>>;
 delete_user(name: String) -> Result<()>;
 ```
-API Calls to be implemented:
-
-```rust
-get_user() -> UserAccount;
-get_user_vault() -> UserVault;
-get_all_vaults_from_user() -> Vec<UserVault>;
-delete_user(name: String);
-delete_vault(username: String, vaultname: String);
-change_user_name(username: String, new_username: String);
-```
