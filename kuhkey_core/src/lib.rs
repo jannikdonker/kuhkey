@@ -27,7 +27,7 @@ const KEY_LEN: usize = 32;
 
 /// MAGIC_BYTES + VERSION + UUID + NONCE + SALT + KdFParams + name length (u8).
 /// The variable-length vault name follows directly after.
-pub const HEADER_FIXED_LEN: usize = 4 + 4 + 16 + NONCE_LEN + SALT_LEN + 12 + 1;
+const HEADER_FIXED_LEN: usize = 4 + 4 + 16 + NONCE_LEN + SALT_LEN + 12 + 1;
 
 /// The name length is stored as a u8
 const MAX_VAULT_NAME_LEN: usize = u8::MAX as usize;
