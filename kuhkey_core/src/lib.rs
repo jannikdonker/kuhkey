@@ -3,6 +3,7 @@ use argon2::{
     Algorithm::{self},
     Argon2, Params, Version,
 };
+use rand::seq::index;
 use std::path::{Path, PathBuf};
 use web_time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -498,6 +499,26 @@ impl VaultUnlocked {
         self.header.name.clear();
         self.header.name.push_str(new_name);
         Ok(())
+    }
+
+    /// Return all entries of a vault as a slice.
+    pub fn get_entries(&self) -> &[Entry] {
+        &self.entries
+    }
+
+    /// Add an entry to the unlocked vault.
+    pub fn add_entry(&mut self, entry: Entry) {
+        self.entries.push(entry);
+    }
+
+    /// Remove an entry from the unlocked vault. 
+    /// Returns an error if the entry is not in the vault.
+    pub fn remove_entry(&mut self, id: &Uuid) -> Result<Entry> {
+        let index = match self.entries.iter().position(|e| e.get_id() == id) {
+            Some(index) => index,
+            None => bail!("Entry not in vault")
+        };
+        Ok(self.entries.remove(index))
     }
 }
 
