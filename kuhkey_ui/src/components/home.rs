@@ -4,20 +4,12 @@ use kuhkey_core::Entry;
 
 // TODO: replace with entries from kuhkey_core::open_vault
 fn mock_entries() -> Vec<Entry> {
-    let e = |n: u8, url: &str, username: &str, name: &str, password: &str, notes: &str| Entry {
-        id: [n; 16],
-        password: password.into(),
-        username: username.into(),
-        name: name.into(),
-        url: url.into(),
-        notes: notes.into(),
-        created: 0,
-        modified: 0,
-        last_used: 0,
+    let e = |url: &str, username: &str, name: &str, password: &str, notes: &str| {
+        Entry::new(name, password, username, url, notes)
     };
+
     vec![
         e(
-            1,
             "github.com",
             "flo2505",
             "github",
@@ -25,7 +17,6 @@ fn mock_entries() -> Vec<Entry> {
             "Personal account",
         ),
         e(
-            2,
             "users.rust-lang.org",
             "kyara",
             "rust",
@@ -33,7 +24,6 @@ fn mock_entries() -> Vec<Entry> {
             "",
         ),
         e(
-            3,
             "uni.example.edu",
             "s1234567",
             "uni",
@@ -61,9 +51,9 @@ pub fn Home() -> Element {
         .enumerate()
         .filter(|(_, e)| {
             query.is_empty()
-                || e.url.to_lowercase().contains(&query)
-                || e.name.to_lowercase().contains(&query)
-                || e.username.to_lowercase().contains(&query)
+                || e.get_url().to_lowercase().contains(&query)
+                || e.get_name().to_lowercase().contains(&query)
+                || e.get_username().to_lowercase().contains(&query)
         })
         .collect();
 
@@ -111,8 +101,8 @@ pub fn Home() -> Element {
                                 selected.set(idx);
                                 show_password.set(false);
                             },
-                            div { class: "font-semibold truncate", "{entry.name}" }
-                            div { class: "text-sm opacity-70 truncate", "{entry.username}" }
+                            div { class: "font-semibold truncate", "{entry.get_name()}" }
+                            div { class: "text-sm opacity-70 truncate", "{entry.get_username()}" }
                         }
                     }
                 }
@@ -128,8 +118,8 @@ pub fn Home() -> Element {
                             "logo"
                         }
                         div {
-                            h1 { class: "text-2xl font-bold", "{entry.name}" }
-                            h2 { class: "text-xl font-semibold", "{entry.url}" }
+                            h1 { class: "text-2xl font-bold", "{entry.get_name()}" }
+                            h2 { class: "text-xl font-semibold", "{entry.get_url()}" }
                         }
 
                         //edit button
@@ -142,9 +132,9 @@ pub fn Home() -> Element {
 
                     //username
                     div { class: "flex items-center gap-3",
-                        div { class: "flex-1 px-3 py-2 border-b border-black dark:border-white", "{entry.username}" }
+                        div { class: "flex-1 px-3 py-2 border-b border-black dark:border-white", "{entry.get_username()}" }
                         {
-                            let username = entry.username.clone();
+                            let username = entry.get_username().to_owned();
                             rsx! {
                                 button {
                                     class: "px-2 py-1 border border-black dark:border-white rounded hover:border-green-500",
@@ -159,7 +149,7 @@ pub fn Home() -> Element {
                     div { class: "flex items-center gap-3",
                         div { class: "flex-1 px-3 py-2 border-b border-black dark:border-white",
                             if show_password() {
-                                "{entry.password}"
+                                "{entry.get_password()}"
                             } else {
                                 "••••••••••"
                             }
@@ -171,7 +161,7 @@ pub fn Home() -> Element {
                             if show_password() { "hide" } else { "show" }
                         }
                         {
-                            let password = entry.password.clone();
+                            let password = entry.get_password().to_owned();
                             rsx! {
                                 button {
                                     class: "px-2 py-1 border border-black dark:border-white rounded hover:border-green-500",
@@ -186,7 +176,7 @@ pub fn Home() -> Element {
                     div { class: "flex flex-col gap-1",
                         label { class: "text-sm opacity-70", "Notes" }
                         div { class: "min-h-24 px-3 py-2 border border-black dark:border-white rounded-xl whitespace-pre-wrap",
-                            "{entry.notes}"
+                            "{entry.get_notes()}"
                         }
                     }
                 } else {

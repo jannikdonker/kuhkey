@@ -15,7 +15,7 @@ pub fn Login(on_login: EventHandler<()>) -> Element {
                 on_login.call(());
             },
 
-           // TODO: logo placeholder (swap for an img once you have one)
+           // TODO: logo placeholder (swap for image)
                 div { class: "w-30 h-30 border-2 border-black dark:border-white rounded flex items-center justify-center",
                     "logo"
                 }

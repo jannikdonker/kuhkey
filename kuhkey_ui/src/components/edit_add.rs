@@ -8,13 +8,13 @@ pub fn EditAdd(
     on_cancel: EventHandler<()>,
     //TODO: new: bool, (differentiate between add and edit)
 ) -> Element {
-    let mut name = use_signal(|| entry.name.clone());
-    let mut username = use_signal(|| entry.username.clone());
-    let mut password = use_signal(|| entry.password.clone());
-    let mut url = use_signal(|| entry.url.clone());
-    let mut notes = use_signal(|| entry.notes.clone());
+    let mut name = use_signal(|| entry.get_name().to_owned());
+    let mut username = use_signal(|| entry.get_username().to_owned());
+    let mut password = use_signal(|| entry.get_password().to_owned());
+    let mut url = use_signal(|| entry.get_url().to_owned());
+    let mut notes = use_signal(|| entry.get_notes().to_owned());
 
-    //TODO
+    //TODO: design
     rsx! {
       div { class: "min-h-screen p-4 flex flex-col gap-3 bg-white dark:bg-slate-800 text-black dark:text-white",
             div { class: "flex flex-col gap-3 w-full px-3 py-2 border border-black dark:border-white rounded outline-none focus:border-green-500",
