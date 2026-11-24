@@ -218,6 +218,9 @@
   .shrink-0 {
     flex-shrink: 0;
   }
+  .resize-y {
+    resize: vertical;
+  }
   .flex-col {
     flex-direction: column;
   }
@@ -274,11 +277,11 @@
     border-bottom-style: var(--tw-border-style);
     border-bottom-width: 1px;
   }
+  .border-black {
+    border-color: var(--color-black);
+  }
   .border-green-500 {
     border-color: var(--color-green-500);
-  }
-  .border-white {
-    border-color: var(--color-white);
   }
   .bg-green-600 {
     background-color: var(--color-green-600);
@@ -368,6 +371,11 @@
   .focus\:border-green-500 {
     &:focus {
       border-color: var(--color-green-500);
+    }
+  }
+  .dark\:border-white {
+    @media (prefers-color-scheme: dark) {
+      border-color: var(--color-white);
     }
   }
   .dark\:bg-slate-800 {

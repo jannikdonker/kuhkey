@@ -16,7 +16,7 @@ pub fn Login(on_login: EventHandler<()>) -> Element {
             },
 
            // TODO: logo placeholder (swap for an img once you have one)
-                div { class: "w-30 h-30 border-2 border-white rounded flex items-center justify-center",
+                div { class: "w-30 h-30 border-2 border-black dark:border-white rounded flex items-center justify-center",
                     "logo"
                 }
                 // img { src: asset!("/assets/logo.png"), class: "w-30 h-30" }
@@ -27,13 +27,13 @@ pub fn Login(on_login: EventHandler<()>) -> Element {
                 }
 
                 input {
-                    class: "w-full px-3 py-2 bg-transparent border border-white rounded outline-none focus:border-green-500",
+                    class: "w-full px-3 py-2 bg-transparent border border-black dark:border-white rounded outline-none focus:border-green-500",
                     placeholder: "username",
                     value: "{user}",
                     oninput: move |e| user.set(e.value()),
                 }
                 input {
-                    class: "w-full px-3 py-2 bg-transparent border border-white rounded outline-none focus:border-green-500",
+                    class: "w-full px-3 py-2 bg-transparent border border-black dark:border-white rounded outline-none focus:border-green-500",
                     r#type: "password",
                     placeholder: "password",
                     value: "{password}",

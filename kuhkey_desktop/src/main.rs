@@ -10,7 +10,7 @@ fn main() {
         .with_min_inner_size(LogicalSize::new(250.0, 450.0)); // can't be resized below this
 
     dioxus::LaunchBuilder::desktop()
-        .with_cfg(Config::new().with_window(window).with_menu(None))
+        .with_cfg(Config::new().with_window(window).with_menu(None)) //TODO: Menu ja nein?
         .launch(Root);
 }
 
