@@ -10,13 +10,13 @@ struct Server<'a> {
     client: &'a reqwest::Client,
 }
 
-/// Checks if the string contains illegal characters like `/` and returns an error if thats the case
+/// Checks if the string contains illegal characters and returns an error if thats the case
 #[inline]
 fn string_has_illegal_chars(input: &str) -> anyhow::Result<()> {
-    if input.contains("/") {
-        Err(anyhow!("String contains illegal characters"))
-    } else {
+    if input.chars().all(|c| c.is_alphanumeric()) {
         Ok(())
+    } else {
+        Err(anyhow!("String contains illegal characters"))
     }
 }
 
