@@ -3,7 +3,6 @@ use argon2::{
     Algorithm::{self},
     Argon2, Params, Version,
 };
-use rand::seq::index;
 use std::path::{Path, PathBuf};
 use web_time::{Duration, SystemTime, UNIX_EPOCH};
 
