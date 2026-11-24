@@ -36,7 +36,7 @@ const MAX_T_COST: u32 = 64;
 /// Refuse to run Argon2 with more than 16 lanes
 const MAX_P_COST: u32 = 16;
 
-#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, PartialEq, Zeroize, ZeroizeOnDrop)]
 pub struct Entry {
     #[zeroize(skip)] // id doesnt need to be zeroized
     id: Uuid,

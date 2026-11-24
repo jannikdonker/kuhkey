@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 kuhkey_core = { path = "../kuhkey_core" }
+dioxus = { version = "0.7" }
