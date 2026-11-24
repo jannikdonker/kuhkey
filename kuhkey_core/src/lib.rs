@@ -3,14 +3,14 @@ use argon2::{
     Algorithm::{self},
     Argon2, Params, Version,
 };
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use chacha20poly1305::{
     KeyInit, XChaCha20Poly1305, XNonce,
     aead::{Aead, Payload, common::getrandom},
 };
 use uuid::Uuid;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 pub mod generator;
 
@@ -22,8 +22,12 @@ const NONCE_LEN: usize = 24; // 24 for XChaCha20 (12 for AES-GCM)
 const SALT_LEN: usize = 16; // 16 for Argon2
 const KEY_LEN: usize = 32;
 
-/// MAGIC_BYTES + VERSION + NONCE + SALT + KdFParams
-pub const HEADER_LEN: usize = 4 + 4 + NONCE_LEN + SALT_LEN + 12;
+/// MAGIC_BYTES + VERSION + UUID + NONCE + SALT + KdFParams + name length (u8).
+/// The variable-length vault name follows directly after.
+pub const HEADER_FIXED_LEN: usize = 4 + 4 + 16 + NONCE_LEN + SALT_LEN + 12 + 1;
+
+/// The name length is stored as a u8
+const MAX_VAULT_NAME_LEN: usize = u8::MAX as usize;
 
 /// Refuse to run Argon2 with more than 1 GiB
 const MAX_M_COST: u32 = 1024 * 1024;
@@ -32,9 +36,11 @@ const MAX_T_COST: u32 = 64;
 /// Refuse to run Argon2 with more than 16 lanes
 const MAX_P_COST: u32 = 16;
 
-#[derive(Clone)]
-struct Entry {
-    id: [u8; 16],
+#[derive(Clone, Zeroize, ZeroizeOnDrop)]
+pub struct Entry {
+    #[zeroize(skip)] // id doesnt need to be zeroized
+    id: Uuid,
+    name: String,
     password: String,
     username: String,
     url: String,
@@ -45,10 +51,11 @@ struct Entry {
 }
 
 impl Entry {
-    pub fn new(password: &str, username: &str, url: &str, notes: &str) -> Self {
-        let timestamp = current_timestamp();
+    pub fn new(name: &str, password: &str, username: &str, url: &str, notes: &str) -> Self {
+        let timestamp = current_timestamp_secs();
         Entry {
-            id: Uuid::new_v4().as_bytes().to_owned(),
+            id: Uuid::new_v4(),
+            name: name.to_owned(),
             password: password.to_owned(),
             username: username.to_owned(),
             url: url.to_owned(),
@@ -59,9 +66,80 @@ impl Entry {
         }
     }
 
+    pub fn get_id(&self) -> &Uuid {
+        &self.id
+    }
+
+    pub fn get_created(&self) -> SystemTime {
+        systemtime_from_timestamp(self.created)
+    }
+
+    pub fn get_modified(&self) -> SystemTime {
+        systemtime_from_timestamp(self.modified)
+    }
+
+    pub fn get_last_used(&self) -> SystemTime {
+        systemtime_from_timestamp(self.last_used)
+    }
+
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn get_password(&self) -> &str {
+        &self.password
+    }
+
+    pub fn get_username(&self) -> &str {
+        &self.username
+    }
+
+    pub fn get_url(&self) -> &str {
+        &self.url
+    }
+
+    pub fn get_notes(&self) -> &str {
+        &self.notes
+    }
+
+    pub fn set_name(&mut self, new_name: &str) {
+        self.name.zeroize();
+        self.name.push_str(new_name);
+        self.modified = current_timestamp_secs();
+    }
+
+    pub fn set_password(&mut self, new_password: &str) {
+        self.password.zeroize();
+        self.password.push_str(new_password);
+        self.modified = current_timestamp_secs();
+    }
+
+    pub fn set_username(&mut self, new_username: &str) {
+        self.username.zeroize();
+        self.username.push_str(new_username);
+        self.modified = current_timestamp_secs();
+    }
+
+    pub fn set_url(&mut self, new_url: &str) {
+        self.url.zeroize();
+        self.url.push_str(new_url);
+        self.modified = current_timestamp_secs();
+    }
+
+    pub fn set_notes(&mut self, new_notes: &str) {
+        self.notes.zeroize();
+        self.notes.push_str(new_notes);
+        self.modified = current_timestamp_secs();
+    }
+
+    pub fn set_last_used(&mut self) {
+        self.last_used = current_timestamp_secs();
+    }
+
     fn get_byte_size(&self) -> usize {
         16 // uuid
-        + 4 * 4 // len prefix for the strings so we know how many bytes to grab
+        + 5 * 4 // len prefix for the strings so we know how many bytes to grab
+        + self.name.len()
         + self.password.len()
         + self.username.len()
         + self.url.len()
@@ -69,11 +147,17 @@ impl Entry {
         + 3 * 8 // timestamps
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
+    fn to_bytes(&self) -> Vec<u8> {
         let capacity = self.get_byte_size();
         let mut bytes = Vec::with_capacity(capacity);
-        bytes.extend_from_slice(&self.id);
-        for s in [&self.password, &self.username, &self.url, &self.notes] {
+        bytes.extend_from_slice(self.id.as_bytes());
+        for s in [
+            &self.name,
+            &self.password,
+            &self.username,
+            &self.url,
+            &self.notes,
+        ] {
             let len: u32 = s.len().try_into().expect("entry field too long");
             bytes.extend_from_slice(&len.to_le_bytes());
             bytes.extend_from_slice(s.as_bytes());
@@ -84,16 +168,31 @@ impl Entry {
         bytes
     }
 
-    pub fn from_bytes(b: &[u8]) -> Result<Self> {
+    fn from_bytes(b: &[u8]) -> Result<Self> {
         let Some((id, mut rest)) = b.split_first_chunk::<16>() else {
             bail!("entry too short for id");
         };
 
-        let mut password = String::new();
-        let mut username = String::new();
-        let mut url = String::new();
-        let mut notes = String::new();
-        for field in [&mut password, &mut username, &mut url, &mut notes] {
+        // Fill an Entry in place so an early return drops (and zeroizes) the
+        // fields parsed so far instead of leaving plain Strings behind.
+        let mut entry = Entry {
+            id: Uuid::from_bytes(*id),
+            name: String::new(),
+            password: String::new(),
+            username: String::new(),
+            url: String::new(),
+            notes: String::new(),
+            created: 0,
+            modified: 0,
+            last_used: 0,
+        };
+        for field in [
+            &mut entry.name,
+            &mut entry.password,
+            &mut entry.username,
+            &mut entry.url,
+            &mut entry.notes,
+        ] {
             let Some((len_bytes, after_len)) = rest.split_first_chunk::<4>() else {
                 bail!("entry too short for string length");
             };
@@ -103,7 +202,7 @@ impl Entry {
             }
             let (str_bytes, after_str) = after_len.split_at(len);
             rest = after_str;
-            *field = String::from_utf8(str_bytes.to_vec())?;
+            field.push_str(std::str::from_utf8(str_bytes)?);
         }
 
         if rest.len() < 8 * 3 {
@@ -115,27 +214,27 @@ impl Entry {
         let (modified, rest) = rest.split_first_chunk::<8>().unwrap();
         let (last_used, _) = rest.split_first_chunk::<8>().unwrap();
 
-        Ok(Self {
-            id: *id,
-            password,
-            username,
-            url,
-            notes,
-            created: u64::from_le_bytes(*created),
-            modified: u64::from_le_bytes(*modified),
-            last_used: u64::from_le_bytes(*last_used),
-        })
+        entry.created = u64::from_le_bytes(*created);
+        entry.modified = u64::from_le_bytes(*modified);
+        entry.last_used = u64::from_le_bytes(*last_used);
+        Ok(entry)
     }
 }
 
-pub fn current_timestamp() -> u64 {
+fn current_timestamp_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
 }
 
-#[derive(Debug, Copy, Clone)]
+fn systemtime_from_timestamp(secs: u64) -> SystemTime {
+    UNIX_EPOCH
+        .checked_add(Duration::from_secs(secs))
+        .unwrap_or(UNIX_EPOCH)
+}
+
+#[derive(Copy, Clone)]
 struct KdfParams {
     m_cost: u32, // memory in KiB
     t_cost: u32, // time (iterations)
@@ -179,38 +278,71 @@ impl KdfParams {
     }
 }
 
-// Bytes: 4 + 4 + 24 + 16 + 12 = 60
+// Bytes: 4 + 4 + 16 + 24 + 16 + 12 + 1 = 77, followed by 0..=255 bytes of name
+// The header is stored in plaintext (but authenticated), so the name is readable without the password.
 #[derive(Clone)]
 struct VaultHeader {
     magic: [u8; 4],
     version: u32,
+    id: Uuid,
     nonce: [u8; NONCE_LEN],
     salt: [u8; SALT_LEN],
     kdf_params: KdfParams, // 12 bytes (3 * u32)
+    name: String,          // u8 length prefix + utf-8 bytes
 }
 
 impl VaultHeader {
-    fn to_bytes(&self) -> [u8; HEADER_LEN] {
-        [
-            &self.magic as &[u8],
-            &self.version.to_le_bytes(),
-            &self.nonce,
-            &self.salt,
-            &self.kdf_params.to_bytes(),
-        ]
-        .concat()
-        .try_into()
-        // should never fail
-        .expect("Couldn't convert VaultHeader to bytes")
+    fn new(name: &str, kdf_params: KdfParams) -> Result<Self> {
+        if name.len() > MAX_VAULT_NAME_LEN {
+            bail!("vault name too long")
+        }
+
+        let mut salt = [0u8; SALT_LEN];
+        let mut nonce = [0u8; NONCE_LEN];
+        getrandom::fill(&mut salt)?;
+        getrandom::fill(&mut nonce)?;
+
+        Ok(Self {
+            magic: MAGIC_BYTES,
+            version: VAULT_VERSION,
+            id: Uuid::new_v4(),
+            nonce,
+            salt,
+            kdf_params,
+            name: name.to_owned(),
+        })
     }
 
-    fn from_bytes(b: &[u8; HEADER_LEN]) -> Result<Self> {
-        // unwrap is save here because we know the HEADER_LENGTH
-        let (magic, rest) = b.split_first_chunk::<4>().unwrap();
-        let (version, rest) = rest.split_first_chunk::<4>().unwrap();
-        let (nonce, rest) = rest.split_first_chunk::<NONCE_LEN>().unwrap();
-        let (salt, rest) = rest.split_first_chunk::<SALT_LEN>().unwrap();
-        let (kdf, _) = rest.split_first_chunk::<12>().unwrap();
+    fn to_bytes(&self) -> Vec<u8> {
+        // should never fail, the name length is checked in new() and set_name()
+        let name_len: u8 = self.name.len().try_into().unwrap();
+
+        let mut bytes = Vec::with_capacity(HEADER_FIXED_LEN + self.name.len());
+        bytes.extend_from_slice(&self.magic);
+        bytes.extend_from_slice(&self.version.to_le_bytes());
+        bytes.extend_from_slice(self.id.as_bytes());
+        bytes.extend_from_slice(&self.nonce);
+        bytes.extend_from_slice(&self.salt);
+        bytes.extend_from_slice(&self.kdf_params.to_bytes());
+        bytes.push(name_len);
+        bytes.extend_from_slice(self.name.as_bytes());
+        bytes
+    }
+
+    /// Parses the header at the start of `b` and returns it together with the remaining bytes (the payload).
+    fn from_bytes(b: &[u8]) -> Result<(Self, &[u8])> {
+        let Some((fixed, rest)) = b.split_first_chunk::<HEADER_FIXED_LEN>() else {
+            bail!("vault file too short");
+        };
+
+        // unwrap is save here because we know the HEADER_FIXED_LEN
+        let (magic, fixed) = fixed.split_first_chunk::<4>().unwrap();
+        let (version, fixed) = fixed.split_first_chunk::<4>().unwrap();
+        let (id, fixed) = fixed.split_first_chunk::<16>().unwrap();
+        let (nonce, fixed) = fixed.split_first_chunk::<NONCE_LEN>().unwrap();
+        let (salt, fixed) = fixed.split_first_chunk::<SALT_LEN>().unwrap();
+        let (kdf, fixed) = fixed.split_first_chunk::<12>().unwrap();
+        let (name_len, _) = fixed.split_first_chunk::<1>().unwrap();
 
         if *magic != MAGIC_BYTES {
             bail!("bad magic bytes");
@@ -230,13 +362,24 @@ impl VaultHeader {
             bail!("p_cost too large");
         }
 
-        Ok(Self {
+        let name_len = u8::from_le_bytes(*name_len) as usize;
+        let Some((name, payload)) = rest.split_at_checked(name_len) else {
+            bail!("vault file too short for vault name");
+        };
+        let name = std::str::from_utf8(name)
+            .context("vault name is not valid utf-8")?
+            .to_owned();
+
+        let header = Self {
             magic: *magic,
             version,
+            id: Uuid::from_bytes(*id),
             nonce: *nonce,
             salt: *salt,
             kdf_params,
-        })
+            name,
+        };
+        Ok((header, payload))
     }
 }
 
@@ -246,17 +389,25 @@ pub struct VaultLocked {
 }
 
 impl VaultLocked {
+    pub fn get_name(&self) -> &str {
+        &self.header.name
+    }
+
+    pub fn get_id(&self) -> &Uuid {
+        &self.header.id
+    }
+
     pub fn to_bytes(&self) -> Vec<u8> {
-        [&self.header.to_bytes()[..], &self.payload].concat()
+        let mut bytes = self.header.to_bytes();
+        bytes.extend_from_slice(&self.payload);
+        bytes
     }
 
     pub fn from_bytes(b: &[u8]) -> Result<Self> {
-        let Some((header, payload)) = b.split_first_chunk::<HEADER_LEN>() else {
-            bail!("vault file too short");
-        };
+        let (header, payload) = VaultHeader::from_bytes(b)?;
 
         Ok(Self {
-            header: VaultHeader::from_bytes(header)?,
+            header,
             payload: payload.to_vec(),
         })
     }
@@ -265,6 +416,32 @@ impl VaultLocked {
 pub struct VaultUnlocked {
     header: VaultHeader,
     entries: Vec<Entry>,
+}
+
+impl VaultUnlocked {
+    pub fn new(name: &str) -> Result<Self> {
+        Ok(Self {
+            header: VaultHeader::new(name, KdfParams::default())?,
+            entries: Vec::new(),
+        })
+    }
+
+    pub fn get_name(&self) -> &str {
+        &self.header.name
+    }
+
+    pub fn get_id(&self) -> &Uuid {
+        &self.header.id
+    }
+
+    pub fn set_name(&mut self, new_name: &str) -> Result<()> {
+        if new_name.len() > MAX_VAULT_NAME_LEN {
+            bail!("vault name to long")
+        }
+        self.header.name.clear();
+        self.header.name.push_str(new_name);
+        Ok(())
+    }
 }
 
 fn derive_key(password: &[u8], salt: &[u8], p: KdfParams) -> Result<Zeroizing<[u8; KEY_LEN]>> {
@@ -279,18 +456,10 @@ fn derive_key(password: &[u8], salt: &[u8], p: KdfParams) -> Result<Zeroizing<[u
 /// Encrypts the entries into a new locked vault.
 /// A fresh salt and nonce are generated on every call, so a nonce is never reused with the same key.
 pub fn lock_vault(password: &[u8], vault_unlocked: &VaultUnlocked) -> Result<VaultLocked> {
-    let mut salt = [0u8; SALT_LEN];
-    let mut nonce = [0u8; NONCE_LEN];
-    getrandom::fill(&mut salt)?;
-    getrandom::fill(&mut nonce)?;
-
-    let header = VaultHeader {
-        magic: MAGIC_BYTES,
-        version: VAULT_VERSION,
-        nonce,
-        salt,
-        kdf_params: vault_unlocked.header.kdf_params,
-    };
+    // Keep id, name and kdf params of the vault, only salt and nonce are renewed
+    let mut header = vault_unlocked.header.clone();
+    getrandom::fill(&mut header.salt)?;
+    getrandom::fill(&mut header.nonce)?;
 
     let key = derive_key(password, &header.salt, header.kdf_params)?;
     let cipher = XChaCha20Poly1305::new_from_slice(&key[..])?;
@@ -366,10 +535,25 @@ pub fn unlock_vault(password: &[u8], vault_locked: &VaultLocked) -> Result<Vault
 mod tests {
     use super::*;
 
+    #[test]
+    fn from_timestamp_roundtrips_normal_values() {
+        let t = systemtime_from_timestamp(1_700_000_000);
+        assert_eq!(
+            t.duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            1_700_000_000
+        );
+    }
+
+    #[test]
+    fn from_timestamp_does_not_panic_on_overflow() {
+        assert_eq!(systemtime_from_timestamp(u64::MAX), UNIX_EPOCH);
+    }
+
     fn header() -> VaultHeader {
         VaultHeader {
             magic: MAGIC_BYTES,
             version: VAULT_VERSION,
+            id: Uuid::new_v4(),
             nonce: [7; NONCE_LEN],
             salt: [9; SALT_LEN],
             kdf_params: KdfParams {
@@ -377,6 +561,7 @@ mod tests {
                 t_cost: 5,
                 p_cost: 6,
             },
+            name: "Personal".to_owned(),
         }
     }
 
@@ -415,19 +600,76 @@ mod tests {
     #[test]
     fn header_to_bytes_layout() {
         let bytes = header().to_bytes();
-        assert_eq!(bytes.len(), HEADER_LEN);
+        assert_eq!(bytes.len(), HEADER_FIXED_LEN + "Personal".len());
         assert_eq!(&bytes[..4], b"KUHV");
+        assert_eq!(bytes[HEADER_FIXED_LEN - 1], 8);
+        assert_eq!(&bytes[HEADER_FIXED_LEN..], b"Personal");
     }
 
     #[test]
     fn header_roundtrip() {
         let h = header();
-        let r = VaultHeader::from_bytes(&h.to_bytes()).unwrap();
+        let bytes = h.to_bytes();
+        let (r, rest) = VaultHeader::from_bytes(&bytes).unwrap();
         assert_eq!(r.magic, h.magic);
         assert_eq!(r.version, h.version);
         assert_eq!(r.nonce, h.nonce);
         assert_eq!(r.salt, h.salt);
         assert_eq!(r.kdf_params.m_cost, h.kdf_params.m_cost);
+        assert_eq!(r.name, h.name);
+        assert!(rest.is_empty());
+    }
+
+    #[test]
+    fn header_empty_name_roundtrip() {
+        let mut h = header();
+        h.name.clear();
+        let bytes = h.to_bytes();
+        assert_eq!(bytes.len(), HEADER_FIXED_LEN);
+        let (r, _) = VaultHeader::from_bytes(&bytes).unwrap();
+        assert_eq!(r.name, "");
+    }
+
+    #[test]
+    fn header_name_with_multibyte_chars_roundtrip() {
+        let mut h = header();
+        h.name = "Kühe 🐄".to_owned();
+        let (r, _) = VaultHeader::from_bytes(&h.to_bytes()).unwrap();
+        assert_eq!(r.name, "Kühe 🐄");
+    }
+
+    #[test]
+    fn header_rejects_name_longer_than_file() {
+        let bytes = header().to_bytes();
+        assert!(VaultHeader::from_bytes(&bytes[..bytes.len() - 1]).is_err());
+    }
+
+    #[test]
+    fn header_rejects_invalid_utf8_name() {
+        let mut bytes = header().to_bytes();
+        bytes[HEADER_FIXED_LEN] = 0xFF;
+        assert!(VaultHeader::from_bytes(&bytes).is_err());
+    }
+
+    #[test]
+    fn header_new_accepts_max_name_len() {
+        let name = "a".repeat(MAX_VAULT_NAME_LEN);
+        assert!(VaultHeader::new(&name, KdfParams::default()).is_ok());
+    }
+
+    #[test]
+    fn header_new_rejects_too_long_name() {
+        let name = "a".repeat(MAX_VAULT_NAME_LEN + 1);
+        assert!(VaultHeader::new(&name, KdfParams::default()).is_err());
+    }
+
+    #[test]
+    fn set_name_rejects_too_long_name_and_keeps_old_one() {
+        let mut v = VaultUnlocked::new("Personal").unwrap();
+        assert!(v.set_name(&"a".repeat(MAX_VAULT_NAME_LEN + 1)).is_err());
+        assert_eq!(v.get_name(), "Personal");
+        v.set_name("Work").unwrap();
+        assert_eq!(v.get_name(), "Work");
     }
 
     #[test]
@@ -489,14 +731,16 @@ mod tests {
     #[test]
     fn vault_roundtrip() {
         let h = header();
+        let expected_len = HEADER_FIXED_LEN + h.name.len() + 5;
         let v = VaultLocked {
             header: h,
             payload: vec![1, 2, 3, 4, 5],
         };
         let bytes = v.to_bytes();
-        assert_eq!(bytes.len(), HEADER_LEN + 5);
+        assert_eq!(bytes.len(), expected_len);
         let r = VaultLocked::from_bytes(&bytes).unwrap();
         assert_eq!(r.payload, v.payload);
+        assert_eq!(r.get_name(), "Personal");
         assert_eq!(r.header.nonce, v.header.nonce);
         assert_eq!(r.header.salt, v.header.salt);
     }
@@ -515,12 +759,12 @@ mod tests {
     #[test]
     fn vault_too_short() {
         assert!(VaultLocked::from_bytes(&[]).is_err());
-        assert!(VaultLocked::from_bytes(&[0; HEADER_LEN - 1]).is_err());
+        assert!(VaultLocked::from_bytes(&[0; HEADER_FIXED_LEN - 1]).is_err());
     }
 
     #[test]
     fn vault_bad_header_propagates() {
-        assert!(VaultLocked::from_bytes(&[0; HEADER_LEN]).is_err());
+        assert!(VaultLocked::from_bytes(&[0; HEADER_FIXED_LEN]).is_err());
     }
 
     fn unlocked_vault() -> VaultUnlocked {
@@ -533,8 +777,8 @@ mod tests {
         VaultUnlocked {
             header: h,
             entries: vec![
-                Entry::new("hunter2", "muh", "kuh.de", ""),
-                Entry::new("pw", "", "", "notes"),
+                Entry::new("Reddit", "hunter2", "muh", "kuh.de", ""),
+                Entry::new("Facebook", "pw", "", "", "notes"),
             ],
         }
     }
@@ -546,6 +790,7 @@ mod tests {
         let r = unlock_vault(b"master", &locked).unwrap();
         assert_eq!(r.entries.len(), v.entries.len());
         for (a, b) in r.entries.iter().zip(&v.entries) {
+            assert_eq!(a.get_name(), b.get_name());
             assert_eq!(a.to_bytes(), b.to_bytes());
         }
     }
@@ -555,7 +800,9 @@ mod tests {
         let v = unlocked_vault();
         let bytes = lock_vault(b"master", &v).unwrap().to_bytes();
         let locked = VaultLocked::from_bytes(&bytes).unwrap();
+        assert_eq!(locked.get_name(), "Personal");
         let r = unlock_vault(b"master", &locked).unwrap();
+        assert_eq!(r.get_name(), "Personal");
         assert_eq!(r.entries[0].to_bytes(), v.entries[0].to_bytes());
     }
 
@@ -594,6 +841,13 @@ mod tests {
     fn unlock_rejects_modified_header() {
         let mut locked = lock_vault(b"master", &unlocked_vault()).unwrap();
         locked.header.version += 1;
+        assert!(unlock_vault(b"master", &locked).is_err());
+    }
+
+    #[test]
+    fn unlock_rejects_modified_name() {
+        let mut locked = lock_vault(b"master", &unlocked_vault()).unwrap();
+        locked.header.name = "Evil".to_owned();
         assert!(unlock_vault(b"master", &locked).is_err());
     }
 }
