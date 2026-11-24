@@ -1,0 +1,55 @@
+name: Bug report
+description: Something isn't working as expected.
+title: "<area>: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Start the title with the area, e.g. `core:`, `cli:`, `ui:`, `desktop:`, `ext:`, `server:`.
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened?
+      description: Describe the bug. Include error messages or screenshots if you have them.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser (for the extension), commit or branch.
+      placeholder: Windows 11, Firefox 133, main @ abc1234
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: When is the bug fixed?
+      value: |
+        - [ ] The bug no longer occurs with the steps above
+        - [ ] A test covers this case
+    validations:
+      required: true
