@@ -64,28 +64,20 @@ impl KuhKeyClient {
     async fn create_user_vault(
         &self,
         user_name: impl Into<String>,
-        vault_name: impl Into<String>,
+        locked_vault_bytes: &[u8],
     ) -> anyhow::Result<()> {
         let user_name = user_name.into();
-        let vault_name = vault_name.into();
 
         string_has_illegal_chars(&user_name)?;
-        string_has_illegal_chars(&vault_name)?;
 
         self.client
             .post(format!("{BASE_URL}/create_user_vault"))
-            .json(&UserVault {
-                user_name: user_name.clone(),
-                vault_name: vault_name.clone(),
-            })
+            .json(&(&user_name, locked_vault_bytes))
             .send()
             .await?
             .error_for_status()?;
 
-        println!(
-            "[INFO]: Created a vault with name `{}` for user `{}`",
-            vault_name, user_name
-        );
+        println!("[INFO]: Created a vault for user `{}`", user_name);
         Ok(())
     }
 
@@ -114,18 +106,17 @@ impl KuhKeyClient {
     async fn get_user_vault(
         &self,
         user_name: impl Into<String>,
-        vault_name: impl Into<String>,
+        vault_id: impl Into<String>,
     ) -> anyhow::Result<UserVault> {
         let user_name = user_name.into();
-        let vault_name = vault_name.into();
+        let vault_id = vault_id.into();
 
         string_has_illegal_chars(&user_name)?;
-        string_has_illegal_chars(&vault_name)?;
 
         let user_vault: UserVault = self
             .client
             .get(format!("{BASE_URL}/get_user_vault"))
-            .json(&(&user_name, &vault_name))
+            .json(&(&user_name, &vault_id))
             .send()
             .await?
             .error_for_status()?
@@ -133,8 +124,8 @@ impl KuhKeyClient {
             .await?;
 
         println!(
-            "[INFO]: Successfully requested user vault from `{}` and vault name `{}`",
-            user_name, vault_name
+            "[INFO]: Successfully requested user vault from `{}` and vault id `{}`",
+            user_name, vault_id
         );
 
         Ok(user_vault)
@@ -285,8 +276,11 @@ async fn main() -> anyhow::Result<()> {
                 let mut vault_buffer = String::new();
                 std::io::stdin().read_line(&mut vault_buffer).unwrap();
 
+                let vault = kuhkey_core::VaultUnlocked::new(vault_buffer.trim()).unwrap();
+                let vault = kuhkey_core::lock_vault("test_password".as_bytes(), &vault).unwrap();
+
                 client
-                    .create_user_vault(name_buffer.trim(), vault_buffer.trim())
+                    .create_user_vault(name_buffer.trim(), &vault.to_bytes())
                     .await?
             }
             "4" => {

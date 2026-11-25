@@ -14,6 +14,7 @@ use std::{
 
 const BASE_VAULT_PATH: &str = "temp/vaults";
 const DATABASE_PATH: &str = "temp/kuhkey_server.db";
+const FILE_EXTENSION: &str = "barn";
 
 #[derive(Clone)]
 struct AppState {
@@ -29,7 +30,7 @@ pub struct UserAccount {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct UserVault {
     pub user_name: String,
-    pub vault_name: String,
+    pub locked_vault: Vec<u8>,
 }
 
 /// POST /api/v1/create_tables
@@ -84,17 +85,22 @@ async fn db_create_user(
 /// POST /api/v1/create_user_vault
 async fn db_create_user_vault(
     State(state): State<AppState>,
-    Json(user_vault): Json<UserVault>,
+    Json((username, locked_vault_bytes)): Json<(String, Vec<u8>)>,
 ) -> Result<StatusCode, StatusCode> {
-    let Ok(user_id) = db_get_user_id(State(state), &user_vault.user_name).await else {
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    let Ok(user_id) = db_get_user_id(State(state), &username).await else {
+        return Err(StatusCode::NOT_FOUND);
     };
 
-    let result = std::fs::File::create(format!(
-        "{BASE_VAULT_PATH}/{}/{}",
-        user_id, user_vault.vault_name
-    ));
-    match result {
+    let vault = kuhkey_core::VaultLocked::from_bytes(&locked_vault_bytes)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let vault_name = format!("{}.{FILE_EXTENSION}", vault.get_id().to_string());
+
+    let path = PathBuf::from(BASE_VAULT_PATH)
+        .join(&user_id)
+        .join(&vault_name);
+    let write_result = vault.write_to_disk(Some(&path));
+
+    match write_result {
         Ok(_) => Ok(StatusCode::CREATED),
         Err(err) => {
             eprintln!("Error while creating vault for user: {:?}", err);
@@ -137,28 +143,25 @@ async fn db_get_user(
 /// GET /api/v1/get_user_vault
 async fn db_get_user_vault(
     State(state): State<AppState>,
-    Json((username, vaultname)): Json<(String, String)>,
+    Json((username, vault_id)): Json<(String, String)>,
 ) -> Result<Json<UserVault>, StatusCode> {
     let user_id = db_get_user_id(State(state), &username)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| StatusCode::NOT_FOUND)?;
 
+    let vault_name = format!("{vault_id}.{FILE_EXTENSION}");
     let path = PathBuf::from(BASE_VAULT_PATH)
         .join(&user_id)
-        .join(&vaultname);
+        .join(&vault_name);
 
     if !path.exists() {
         return Err(StatusCode::NOT_FOUND);
     }
 
-    let vault_name = path
-        .file_name()
-        .ok_or(StatusCode::NOT_FOUND)?
-        .to_string_lossy()
-        .into_owned();
+    let vault_bytes = std::fs::read(&path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(UserVault {
         user_name: username,
-        vault_name,
+        locked_vault: vault_bytes,
     }))
 }
 
@@ -169,7 +172,8 @@ async fn db_get_all_vaults_from_user(
 ) -> Result<Json<Vec<UserVault>>, StatusCode> {
     let user_id = db_get_user_id(State(state), &username)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
     let vault_path = PathBuf::from(BASE_VAULT_PATH).join(&user_id);
 
     let user_vaults: Vec<UserVault> = std::fs::read_dir(&vault_path)
@@ -177,10 +181,14 @@ async fn db_get_all_vaults_from_user(
         .filter_map(|file| file.ok()) // Ignore `None` vaules
         .filter(|file| file.path().is_file()) // Only collect files
         .map(|file| file.file_name().to_string_lossy().into_owned()) // Get file names
-        .map(|file_name| UserVault {
-            // Finally, create the user vaults
-            user_name: username.clone(),
-            vault_name: file_name,
+        .map(|file_name| {
+            // TODO: Figure out how to do this without unwrapping
+            let vault_bytes = std::fs::read(&file_name).unwrap();
+
+            UserVault {
+                user_name: username.clone(),
+                locked_vault: vault_bytes,
+            }
         })
         .collect();
 
@@ -194,7 +202,7 @@ async fn db_delete_user(
 ) -> Result<StatusCode, StatusCode> {
     let user_id = db_get_user_id(State(state.clone()), &username)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| StatusCode::NOT_FOUND)?;
 
     let vault_path = PathBuf::from(BASE_VAULT_PATH).join(&user_id);
 
@@ -214,7 +222,7 @@ async fn db_delete_vault(
 ) -> Result<StatusCode, StatusCode> {
     let user_id = db_get_user_id(State(state.clone()), &username)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| StatusCode::NOT_FOUND)?;
 
     let vault_path = PathBuf::from(BASE_VAULT_PATH)
         .join(&user_id)
