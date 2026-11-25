@@ -339,30 +339,37 @@ impl VaultHeader {
         })
     }
 
+    /// Return the vaults Uuid.
     pub fn get_id(&self) -> &Uuid {
         &self.id
     }
 
+    /// Return the vaults version.
     pub fn get_version(&self) -> u32 {
         self.version
     }
 
+    /// Return the vaults name.
     pub fn get_name(&self) -> &str {
         &self.name
     }
 
+    /// Return the vault created timestamp.
     pub fn get_created(&self) -> SystemTime {
         systemtime_from_timestamp(self.created)
     }
 
+    /// Return the vault modified timestamp.
     pub fn get_modified(&self) -> SystemTime {
         systemtime_from_timestamp(self.modified)
     }
 
+    /// Return the vault last_used timestamp.
     pub fn get_last_used(&self) -> SystemTime {
         systemtime_from_timestamp(self.last_used)
     }
 
+    /// Set the vault name. (Max length is 255 chars)
     pub fn set_name(&mut self, name: &str) -> Result<()> {
         if name.len() > MAX_VAULT_NAME_LEN {
             bail!("vault name too long")
@@ -374,6 +381,7 @@ impl VaultHeader {
         Ok(())
     }
 
+    /// Set the vaults version.
     pub fn set_version(&mut self, version: u32) {
         self.modified = current_timestamp_secs();
         self.version = version;
