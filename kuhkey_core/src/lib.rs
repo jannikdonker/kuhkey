@@ -535,6 +535,47 @@ impl VaultLocked {
         let bytes = std::fs::read(path)?;
         Self::from_bytes(&bytes)
     }
+
+    /// Decrypts a locked vault. Fails on a wrong password or a modified vault.
+    pub fn unlock(&self, password: &str) -> Result<VaultUnlocked> {
+        let header = &self.header;
+        let key = derive_key(password.as_bytes(), &header.salt, header.kdf_params)?;
+        let cipher = XChaCha20Poly1305::new_from_slice(&key[..])?;
+        drop(key); // explicit drop
+
+        let header_bytes = header.to_bytes();
+        let plaintext = Zeroizing::new(
+            cipher
+                .decrypt(
+                    &XNonce::from(header.nonce),
+                    Payload {
+                        msg: &self.payload,
+                        aad: &header_bytes,
+                    },
+                )
+                .context("wrong password or corrupted vault")?,
+        );
+
+        // Read back the u32 length-prefixed entries written by lock_vault
+        let mut entries = Vec::new();
+        let mut rest = &plaintext[..];
+        while !rest.is_empty() {
+            let Some((len, after_len)) = rest.split_first_chunk::<4>() else {
+                bail!("vault too short for entry length");
+            };
+            let len = u32::from_le_bytes(*len) as usize;
+            let Some((entry, after_entry)) = after_len.split_at_checked(len) else {
+                bail!("entry length exceeds vault size");
+            };
+            entries.push(Entry::from_bytes(entry)?);
+            rest = after_entry;
+        }
+
+        Ok(VaultUnlocked {
+            header: header.clone(),
+            entries,
+        })
+    }
 }
 
 /// A decrypted vault holding its header and plaintext entries in memory.
@@ -609,6 +650,43 @@ impl VaultUnlocked {
         let index = self.entries.iter().position(|e| e.get_id() == id)?;
         Some(self.entries.remove(index))
     }
+
+    /// Encrypts the entries into a new locked vault.
+    /// A fresh salt and nonce are generated on every call, so a nonce is never reused with the same key.
+    pub fn lock(&self, password: &str) -> Result<VaultLocked> {
+        // Keep id, name and kdf params of the vault, only salt and nonce are renewed
+        let mut header = self.header.clone();
+        getrandom::fill(&mut header.salt)?;
+        getrandom::fill(&mut header.nonce)?;
+
+        let key = derive_key(password.as_bytes(), &header.salt, header.kdf_params)?;
+        let cipher = XChaCha20Poly1305::new_from_slice(&key[..])?;
+        drop(key); // explicit drop
+
+        // Each entry is prefixed with its u32 length so unlock_vault can split them again.
+        // Capacity is reserved up front so no unzeroized copies are left behind by reallocations.
+        let entries = &self.entries;
+        let capacity = entries.iter().map(|e| 4 + e.get_byte_size()).sum();
+        let mut plaintext = Zeroizing::new(Vec::with_capacity(capacity));
+        for entry in entries {
+            let bytes = Zeroizing::new(entry.to_bytes());
+            let len: u32 = bytes.len().try_into()?;
+            plaintext.extend_from_slice(&len.to_le_bytes());
+            plaintext.extend_from_slice(&bytes);
+        }
+
+        // The header is authenticated as associated data, so tampering with it makes decryption fail
+        let header_bytes = header.to_bytes();
+        let payload = cipher.encrypt(
+            &XNonce::from(header.nonce),
+            Payload {
+                msg: &plaintext,
+                aad: &header_bytes,
+            },
+        )?;
+
+        Ok(VaultLocked { header, payload })
+    }
 }
 
 fn derive_key(password: &[u8], salt: &[u8], p: KdfParams) -> Result<Zeroizing<[u8; KEY_LEN]>> {
@@ -618,84 +696,6 @@ fn derive_key(password: &[u8], salt: &[u8], p: KdfParams) -> Result<Zeroizing<[u
     let mut key = Zeroizing::new([0u8; KEY_LEN]);
     argon2.hash_password_into(password, salt, &mut key[..])?;
     Ok(key)
-}
-
-/// Encrypts the entries into a new locked vault.
-/// A fresh salt and nonce are generated on every call, so a nonce is never reused with the same key.
-pub fn lock_vault(password: &[u8], vault_unlocked: &VaultUnlocked) -> Result<VaultLocked> {
-    // Keep id, name and kdf params of the vault, only salt and nonce are renewed
-    let mut header = vault_unlocked.header.clone();
-    getrandom::fill(&mut header.salt)?;
-    getrandom::fill(&mut header.nonce)?;
-
-    let key = derive_key(password, &header.salt, header.kdf_params)?;
-    let cipher = XChaCha20Poly1305::new_from_slice(&key[..])?;
-    drop(key); // explicit drop
-
-    // Each entry is prefixed with its u32 length so unlock_vault can split them again.
-    // Capacity is reserved up front so no unzeroized copies are left behind by reallocations.
-    let entries = &vault_unlocked.entries;
-    let capacity = entries.iter().map(|e| 4 + e.get_byte_size()).sum();
-    let mut plaintext = Zeroizing::new(Vec::with_capacity(capacity));
-    for entry in entries {
-        let bytes = Zeroizing::new(entry.to_bytes());
-        let len: u32 = bytes.len().try_into()?;
-        plaintext.extend_from_slice(&len.to_le_bytes());
-        plaintext.extend_from_slice(&bytes);
-    }
-
-    // The header is authenticated as associated data, so tampering with it makes decryption fail
-    let header_bytes = header.to_bytes();
-    let payload = cipher.encrypt(
-        &XNonce::from(header.nonce),
-        Payload {
-            msg: &plaintext,
-            aad: &header_bytes,
-        },
-    )?;
-
-    Ok(VaultLocked { header, payload })
-}
-
-/// Decrypts a locked vault. Fails on a wrong password or a modified vault.
-pub fn unlock_vault(password: &[u8], vault_locked: &VaultLocked) -> Result<VaultUnlocked> {
-    let header = &vault_locked.header;
-    let key = derive_key(password, &header.salt, header.kdf_params)?;
-    let cipher = XChaCha20Poly1305::new_from_slice(&key[..])?;
-    drop(key); // explicit drop
-
-    let header_bytes = header.to_bytes();
-    let plaintext = Zeroizing::new(
-        cipher
-            .decrypt(
-                &XNonce::from(header.nonce),
-                Payload {
-                    msg: &vault_locked.payload,
-                    aad: &header_bytes,
-                },
-            )
-            .context("wrong password or corrupted vault")?,
-    );
-
-    // Read back the u32 length-prefixed entries written by lock_vault
-    let mut entries = Vec::new();
-    let mut rest = &plaintext[..];
-    while !rest.is_empty() {
-        let Some((len, after_len)) = rest.split_first_chunk::<4>() else {
-            bail!("vault too short for entry length");
-        };
-        let len = u32::from_le_bytes(*len) as usize;
-        let Some((entry, after_entry)) = after_len.split_at_checked(len) else {
-            bail!("entry length exceeds vault size");
-        };
-        entries.push(Entry::from_bytes(entry)?);
-        rest = after_entry;
-    }
-
-    Ok(VaultUnlocked {
-        header: header.clone(),
-        entries,
-    })
 }
 
 #[cfg(test)]
@@ -1024,8 +1024,8 @@ mod tests {
     #[test]
     fn lock_unlock_roundtrip() {
         let v = unlocked_vault();
-        let locked = lock_vault(b"master", &v).unwrap();
-        let r = unlock_vault(b"master", &locked).unwrap();
+        let locked = v.lock("master").unwrap();
+        let r = locked.unlock("master").unwrap();
         assert_eq!(r.entries.len(), v.entries.len());
         for (a, b) in r.entries.iter().zip(&v.entries) {
             assert_eq!(a.get_name(), b.get_name());
@@ -1036,10 +1036,10 @@ mod tests {
     #[test]
     fn lock_unlock_roundtrip_through_bytes() {
         let v = unlocked_vault();
-        let bytes = lock_vault(b"master", &v).unwrap().to_bytes();
+        let bytes = v.lock("master").unwrap().to_bytes();
         let locked = VaultLocked::from_bytes(&bytes).unwrap();
         assert_eq!(locked.get_name(), "Personal");
-        let r = unlock_vault(b"master", &locked).unwrap();
+        let r = locked.unlock("master").unwrap();
         assert_eq!(r.get_name(), "Personal");
         assert_eq!(r.entries[0].to_bytes(), v.entries[0].to_bytes());
     }
@@ -1048,28 +1048,28 @@ mod tests {
     fn lock_unlock_empty_vault() {
         let mut v = unlocked_vault();
         v.entries.clear();
-        let locked = lock_vault(b"master", &v).unwrap();
-        assert!(unlock_vault(b"master", &locked).unwrap().entries.is_empty());
+        let locked = v.lock("master").unwrap();
+        assert!(locked.unlock("master").unwrap().entries.is_empty());
     }
 
     #[test]
     fn unlock_rejects_wrong_password() {
-        let locked = lock_vault(b"master", &unlocked_vault()).unwrap();
-        assert!(unlock_vault(b"wrong", &locked).is_err());
+        let locked = unlocked_vault().lock("master").unwrap();
+        assert!(locked.unlock("wrong").is_err());
     }
 
     #[test]
     fn unlock_rejects_modified_payload() {
-        let mut locked = lock_vault(b"master", &unlocked_vault()).unwrap();
+        let mut locked = unlocked_vault().lock("master").unwrap();
         locked.payload[0] ^= 1;
-        assert!(unlock_vault(b"master", &locked).is_err());
+        assert!(locked.unlock("master").is_err());
     }
 
     #[test]
-    fn lock_vault_uses_fresh_salt_and_nonce() {
+    fn lock_uses_fresh_salt_and_nonce() {
         let v = unlocked_vault();
-        let a = lock_vault(b"master", &v).unwrap();
-        let b = lock_vault(b"master", &v).unwrap();
+        let a = v.lock("master").unwrap();
+        let b = v.lock("master").unwrap();
         assert_ne!(a.header.salt, b.header.salt);
         assert_ne!(a.header.nonce, b.header.nonce);
         assert_ne!(a.payload, b.payload);
@@ -1077,16 +1077,16 @@ mod tests {
 
     #[test]
     fn unlock_rejects_modified_header() {
-        let mut locked = lock_vault(b"master", &unlocked_vault()).unwrap();
+        let mut locked = unlocked_vault().lock("master").unwrap();
         locked.header.version += 1;
-        assert!(unlock_vault(b"master", &locked).is_err());
+        assert!(locked.unlock("master").is_err());
     }
 
     #[test]
     fn unlock_rejects_modified_name() {
-        let mut locked = lock_vault(b"master", &unlocked_vault()).unwrap();
+        let mut locked = unlocked_vault().lock("master").unwrap();
         locked.header.name = "Evil".to_owned();
-        assert!(unlock_vault(b"master", &locked).is_err());
+        assert!(locked.unlock("master").is_err());
     }
 
     fn entry_ids(v: &VaultUnlocked) -> Vec<Uuid> {
@@ -1186,7 +1186,7 @@ mod tests {
         assert!(v.remove_entry(&ids[0]).is_some());
         v.get_entry_mut(&ids[1]).unwrap().set_username("kuh");
 
-        let r = unlock_vault(b"master", &lock_vault(b"master", &v).unwrap()).unwrap();
+        let r = v.lock("master").unwrap().unlock("master").unwrap();
         assert_eq!(entry_ids(&r), [ids[1], added_id]);
         assert_eq!(r.get_entry(&ids[1]).unwrap().get_username(), "kuh");
         assert_eq!(r.get_entry(&added_id).unwrap().get_url(), "github.com");
@@ -1210,7 +1210,7 @@ mod tests {
     }
 
     fn locked_vault() -> VaultLocked {
-        lock_vault(b"master", &unlocked_vault()).unwrap()
+        unlocked_vault().lock("master").unwrap()
     }
 
     #[test]
@@ -1233,12 +1233,16 @@ mod tests {
     fn unlock_after_disk_roundtrip() {
         let dir = TempDir::new();
         let v = unlocked_vault();
-        let path = lock_vault(b"master", &v)
+        let path = v
+            .lock("master")
             .unwrap()
             .write_to_disk(Some(&dir.0.join("vault.barn")))
             .unwrap();
 
-        let r = unlock_vault(b"master", &VaultLocked::read_from_disk(&path).unwrap()).unwrap();
+        let r = VaultLocked::read_from_disk(&path)
+            .unwrap()
+            .unlock("master")
+            .unwrap();
         assert_eq!(r.get_id(), v.get_id());
         assert_eq!(r.entries.len(), v.entries.len());
         for (a, b) in r.entries.iter().zip(&v.entries) {
@@ -1328,6 +1332,6 @@ mod tests {
 
         // The header is still intact so reading succeeds, but the auth tag no longer matches
         let locked = VaultLocked::read_from_disk(&path).unwrap();
-        assert!(unlock_vault(b"master", &locked).is_err());
+        assert!(locked.unlock("master").is_err());
     }
 }
