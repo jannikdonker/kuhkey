@@ -1,12 +1,14 @@
 name: Feature / Task
 description: New functionality or a piece of work for a sprint.
-title: "<area>: "
 labels: ["feature"]
 body:
   - type: markdown
     attributes:
       value: |
-        Start the title with the area, e.g. `core:`, `cli:`, `ui:`, `desktop:`, `ext:`, `server:`.
+        Start the title with the area:
+        - Code: `core:`, `cli:`, `ui:`, `desktop:`, `ext:`, `server:`, `tui:`
+        - Other work: `ci:` (workflows, checks), `docs:` (documentation), `chore:` (tooling, dependencies, cleanup)
+
         Add the matching area label after creating the issue.
 
   - type: textarea
@@ -16,18 +18,7 @@ body:
       description: What should be done and why?
       placeholder: Add a generator for random usernames, so users don't have to come up with one themselves.
     validations:
-      required: true
-
-  - type: textarea
-    id: acceptance
-    attributes:
-      label: Acceptance criteria
-      description: When is this issue done? Keep each point small and checkable.
-      value: |
-        - [ ]
-        - [ ]
-    validations:
-      required: true
+      required: false
 
   - type: textarea
     id: notes

@@ -33,7 +33,7 @@ fn mock_entries() -> Vec<Entry> {
     ]
 }
 
-fn copy_to_clipboard(text: &str) {
+fn copy_to_clipboard(_text: &str) {
     //TODO;
 }
 
@@ -59,20 +59,20 @@ pub fn Home() -> Element {
 
     let current = entries().get(selected()).cloned();
 
-    if let Some(idx) = editing() {
-        if let Some(entry) = entries().get(idx).cloned() {
-            return rsx! {
-                EditAdd {
-                    entry,
-                    //TODO: new, (differentiate between add and edit)
-                    on_save: move |updated: Entry| {
-                        entries.write()[idx] = updated;
-                        editing.set(None);
-                    },
-                    on_cancel: move |_| editing.set(None),
-                }
-            };
-        }
+    if let Some(idx) = editing()
+        && let Some(entry) = entries().get(idx).cloned()
+    {
+        return rsx! {
+            EditAdd {
+                entry,
+                //TODO: new, (differentiate between add and edit)
+                on_save: move |updated: Entry| {
+                    entries.write()[idx] = updated;
+                    editing.set(None);
+                },
+                on_cancel: move |_| editing.set(None),
+            }
+        };
     }
 
     rsx! {

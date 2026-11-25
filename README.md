@@ -12,7 +12,7 @@
 ![WebAssembly](https://img.shields.io/badge/browser-WebAssembly-161616?logo=webassembly&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/license-MIT-F7A8B8)](LICENSE)
 
-[Features](#features) · [Architecture](#architecture) · [Self-Hosting](#self-hosting-the-server) · [Getting Started](#getting-started) · [License](#license)
+[Features](#features) · [Architecture](#architecture) · [Self-Hosting](#self-hosting-the-server) · [Getting Started](#getting-started) · [Contributing](#contributing) · [License](#license)
 
 </div>
 
@@ -81,6 +81,10 @@ cargo run --bin kuhkey_cli -- get github --copy     # copy the password to the c
 ```
 
 To build the browser extension, see [`kuhkey_ext/SETUP.md`](kuhkey_ext/SETUP.md).
+
+## Contributing
+
+Workflow, branch and commit conventions and code style are described in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## License
 

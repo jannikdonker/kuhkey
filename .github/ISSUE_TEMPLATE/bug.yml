@@ -1,12 +1,13 @@
 name: Bug report
 description: Something isn't working as expected.
-title: "<area>: "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Start the title with the area, e.g. `core:`, `cli:`, `ui:`, `desktop:`, `ext:`, `server:`.
+        Start the title with the area:
+        - Code: `core:`, `cli:`, `ui:`, `desktop:`, `ext:`, `server:`, `tui:`
+        - Other: `ci:` (workflows, checks)
 
   - type: textarea
     id: actual
@@ -32,7 +33,7 @@ body:
         2.
         3.
     validations:
-      required: true
+      required: false
 
   - type: input
     id: environment
@@ -42,14 +43,3 @@ body:
       placeholder: Windows 11, Firefox 133, main @ abc1234
     validations:
       required: false
-
-  - type: textarea
-    id: acceptance
-    attributes:
-      label: Acceptance criteria
-      description: When is the bug fixed?
-      value: |
-        - [ ] The bug no longer occurs with the steps above
-        - [ ] A test covers this case
-    validations:
-      required: true

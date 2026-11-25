@@ -71,7 +71,7 @@ async fn db_create_user(
 
     // Create a vault directory for the user
     // This is just how we have to do it right now..
-    let result = std::fs::create_dir(format!("{BASE_VAULT_PATH}/{}", &user_id));
+    let result = std::fs::create_dir(format!("{BASE_VAULT_PATH}/{}", user_id));
     match result {
         Ok(_) => Ok(StatusCode::CREATED),
         Err(err) => {
@@ -92,7 +92,7 @@ async fn db_create_user_vault(
 
     let result = std::fs::File::create(format!(
         "{BASE_VAULT_PATH}/{}/{}",
-        &user_id, user_vault.vault_name
+        user_id, user_vault.vault_name
     ));
     match result {
         Ok(_) => Ok(StatusCode::CREATED),
@@ -245,13 +245,11 @@ async fn db_get_user_id(State(state): State<AppState>, username: &str) -> rusqli
     let conn = state.connection.lock().unwrap();
     let mut statement = conn.prepare("SELECT id FROM user WHERE name = ?1")?;
 
-    let user_id = statement.query_one([username], |row| {
+    statement.query_one([username], |row| {
         let id: String = row.get(0)?;
 
         Ok(id)
-    });
-
-    user_id
+    })
 }
 
 fn app(conn: Connection) -> Router {
