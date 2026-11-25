@@ -21,6 +21,11 @@ fn string_has_illegal_chars(input: &str) -> anyhow::Result<()> {
 }
 
 impl<'a> Server<'a> {
+    /// Private function to create the user tables once
+    ///
+    /// Do not run this in your code!
+    ///
+    /// Just for testing
     async fn create_user_table(&self) -> anyhow::Result<()> {
         self.client
             .post(format!("{BASE_URL}/create_tables"))
@@ -31,6 +36,9 @@ impl<'a> Server<'a> {
         Ok(())
     }
 
+    /// Create a user account
+    ///
+    /// This creates an entry in the user db as well as create an empty vault directory for the user
     async fn create_user_account(&self, user_name: impl Into<String>) -> anyhow::Result<()> {
         let user_name = user_name.into();
         string_has_illegal_chars(&user_name)?;
@@ -46,6 +54,7 @@ impl<'a> Server<'a> {
         Ok(())
     }
 
+    /// Create an empty vault for a user
     async fn create_user_vault(
         &self,
         user_name: impl Into<String>,
@@ -74,6 +83,7 @@ impl<'a> Server<'a> {
         Ok(())
     }
 
+    /// Request a user
     async fn get_user(&self, user_name: impl Into<String>) -> anyhow::Result<UserAccount> {
         let user_name = user_name.into();
 
@@ -94,6 +104,7 @@ impl<'a> Server<'a> {
         Ok(user_account)
     }
 
+    /// Request a vault from a user
     async fn get_user_vault(
         &self,
         user_name: impl Into<String>,
@@ -123,6 +134,7 @@ impl<'a> Server<'a> {
         Ok(user_vault)
     }
 
+    /// Request all the vaults from a user
     async fn get_all_vaults_from_user(
         &self,
         user_name: impl Into<String>,
@@ -149,6 +161,7 @@ impl<'a> Server<'a> {
         Ok(vaults_from_user)
     }
 
+    /// Delete a user
     async fn delete_user(&self, user_name: impl Into<String>) -> anyhow::Result<()> {
         let user_name = user_name.into();
 
@@ -165,6 +178,7 @@ impl<'a> Server<'a> {
         Ok(())
     }
 
+    /// Delete a vault from a user
     async fn delete_vault(
         &self,
         user_name: impl Into<String>,
@@ -187,6 +201,7 @@ impl<'a> Server<'a> {
         Ok(())
     }
 
+    /// Change the username of a user
     async fn change_user_name(
         &self,
         current_name: impl Into<String>,

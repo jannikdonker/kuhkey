@@ -162,6 +162,7 @@ async fn db_get_user_vault(
     }))
 }
 
+/// GET /api/v1/get_all_vaults_from_user
 async fn db_get_all_vaults_from_user(
     State(state): State<AppState>,
     Json(username): Json<String>,
@@ -186,6 +187,7 @@ async fn db_get_all_vaults_from_user(
     Ok(Json(user_vaults))
 }
 
+/// POST /api/v1/delete_user
 async fn db_delete_user(
     State(state): State<AppState>,
     Json(username): Json<String>,
@@ -205,6 +207,7 @@ async fn db_delete_user(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// POST /api/v1/delete_vault
 async fn db_delete_vault(
     State(state): State<AppState>,
     Json((username, vaultname)): Json<(String, String)>,
@@ -226,6 +229,7 @@ async fn db_delete_vault(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// POST /api/v1/change_user_name
 async fn db_change_user_name(
     State(state): State<AppState>,
     Json((current_name, new_name)): Json<(String, String)>,
