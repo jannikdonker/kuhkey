@@ -9,8 +9,8 @@ use crate::server::VaultNameIdPair;
 
 const BASE_URL: &str = "http://localhost:8080/api/v1";
 
-struct KuhKeyClient {
-    client: reqwest::Client,
+pub struct KuhKeyClient {
+    pub client: reqwest::Client,
 }
 
 /// Checks if the string contains illegal characters and returns an error if thats the case
