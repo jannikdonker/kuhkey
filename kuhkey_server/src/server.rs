@@ -140,7 +140,7 @@ async fn db_get_user(
     Ok(Json(user))
 }
 
-/// GET /api/v1/get_user_vault
+/// GET /api/v1/get_user_vault_with_id
 async fn db_get_user_vault_with_id(
     State(state): State<AppState>,
     Json((username, vault_id)): Json<(String, String)>,
@@ -162,6 +162,7 @@ async fn db_get_user_vault_with_id(
     Ok(Json(vault_bytes))
 }
 
+/// GET /api/v1/get_user_vault_with_name
 async fn db_get_user_vault_with_name(
     State(state): State<AppState>,
     Json((username, vaultname)): Json<(String, String)>,
