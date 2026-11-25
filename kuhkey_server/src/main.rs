@@ -35,7 +35,7 @@ impl KuhKeyClient {
     /// Do not run this in your code!
     ///
     /// Just for testing
-    async fn create_user_table(&self) -> anyhow::Result<()> {
+    pub async fn create_user_table(&self) -> anyhow::Result<()> {
         self.client
             .post(format!("{BASE_URL}/create_tables"))
             .send()
@@ -48,7 +48,7 @@ impl KuhKeyClient {
     /// Create a user account
     ///
     /// This creates an entry in the user db as well as create an empty vault directory for the user
-    async fn create_user_account(&self, user_name: impl Into<String>) -> anyhow::Result<()> {
+    pub async fn create_user_account(&self, user_name: impl Into<String>) -> anyhow::Result<()> {
         let user_name = user_name.into();
         string_has_illegal_chars(&user_name)?;
 
@@ -64,7 +64,7 @@ impl KuhKeyClient {
     }
 
     /// Create an empty vault for a user
-    async fn create_user_vault(
+    pub async fn create_user_vault(
         &self,
         user_name: impl Into<String>,
         locked_vault_bytes: &[u8],
@@ -85,7 +85,7 @@ impl KuhKeyClient {
     }
 
     /// Request a user
-    async fn get_user(&self, user_name: impl Into<String>) -> anyhow::Result<UserAccount> {
+    pub async fn get_user(&self, user_name: impl Into<String>) -> anyhow::Result<UserAccount> {
         let user_name = user_name.into();
 
         string_has_illegal_chars(&user_name)?;
@@ -106,7 +106,7 @@ impl KuhKeyClient {
     }
 
     /// Request a vault from a user using the vault id
-    async fn get_user_vault_with_id(
+    pub async fn get_user_vault_with_id(
         &self,
         user_name: impl Into<String>,
         vault_id: impl Into<String>,
@@ -136,7 +136,7 @@ impl KuhKeyClient {
     }
 
     /// Request a vault from a user using the vault name
-    async fn get_user_vault_with_name(
+    pub async fn get_user_vault_with_name(
         &self,
         user_name: impl Into<String>,
         vault_name: impl Into<String>,
@@ -167,7 +167,7 @@ impl KuhKeyClient {
     }
 
     /// Request all the vaults from a user
-    async fn get_all_vaults_from_user(
+    pub async fn get_all_vaults_from_user(
         &self,
         user_name: impl Into<String>,
     ) -> anyhow::Result<Vec<VaultNameIdPair>> {
@@ -194,7 +194,7 @@ impl KuhKeyClient {
     }
 
     /// Delete a user
-    async fn delete_user(&self, user_name: impl Into<String>) -> anyhow::Result<()> {
+    pub async fn delete_user(&self, user_name: impl Into<String>) -> anyhow::Result<()> {
         let user_name = user_name.into();
 
         string_has_illegal_chars(&user_name)?;
@@ -211,7 +211,7 @@ impl KuhKeyClient {
     }
 
     /// Delete a vault from a user
-    async fn delete_vault(
+    pub async fn delete_vault(
         &self,
         user_name: impl Into<String>,
         vault_name: impl Into<String>,
@@ -234,7 +234,7 @@ impl KuhKeyClient {
     }
 
     /// Change the username of a user
-    async fn change_user_name(
+    pub async fn change_user_name(
         &self,
         current_name: impl Into<String>,
         new_name: impl Into<String>,
@@ -313,7 +313,7 @@ async fn main() -> anyhow::Result<()> {
                 std::io::stdin().read_line(&mut vault_buffer).unwrap();
 
                 let vault = kuhkey_core::VaultUnlocked::new(vault_buffer.trim()).unwrap();
-                let vault = kuhkey_core::lock_vault("test_password".as_bytes(), &vault).unwrap();
+                let vault = vault.lock("test_password").unwrap();
 
                 client
                     .create_user_vault(name_buffer.trim(), &vault.to_bytes())
