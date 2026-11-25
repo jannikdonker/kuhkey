@@ -6,8 +6,8 @@ use server::{UserAccount, UserVault, start_server};
 
 const BASE_URL: &str = "http://localhost:8080/api/v1";
 
-struct Server<'a> {
-    client: &'a reqwest::Client,
+struct KuhKeyClient {
+    client: reqwest::Client,
 }
 
 /// Checks if the string contains illegal characters and returns an error if thats the case
@@ -20,7 +20,13 @@ fn string_has_illegal_chars(input: &str) -> anyhow::Result<()> {
     }
 }
 
-impl<'a> Server<'a> {
+impl KuhKeyClient {
+    /// Create a new KuhKey Client
+    pub fn new() -> Self {
+        let client = reqwest::Client::new();
+        Self { client }
+    }
+
     /// Private function to create the user tables once
     ///
     /// Do not run this in your code!
@@ -240,9 +246,7 @@ async fn main() -> anyhow::Result<()> {
     // Give the background task a tiny moment
     tokio::time::sleep(Duration::from_millis(50)).await;
 
-    let client = reqwest::Client::new();
-    let server = Server { client: &client };
-
+    let client = KuhKeyClient::new();
     let mut buffer = String::new();
 
     println!("KuhKey Server Test environment");
@@ -265,12 +269,12 @@ async fn main() -> anyhow::Result<()> {
             .expect("failed to read from stdin");
 
         match buffer.trim() {
-            "1" => server.create_user_table().await?,
+            "1" => client.create_user_table().await?,
             "2" => {
                 println!("What should the test account be named?");
                 let mut name_buffer = String::new();
                 std::io::stdin().read_line(&mut name_buffer).unwrap();
-                server.create_user_account(name_buffer.trim()).await?
+                client.create_user_account(name_buffer.trim()).await?
             }
             "3" => {
                 println!("Enter the username for which to create the vault");
@@ -281,7 +285,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut vault_buffer = String::new();
                 std::io::stdin().read_line(&mut vault_buffer).unwrap();
 
-                server
+                client
                     .create_user_vault(name_buffer.trim(), vault_buffer.trim())
                     .await?
             }
@@ -290,7 +294,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut name_buffer = String::new();
                 std::io::stdin().read_line(&mut name_buffer).unwrap();
 
-                let user = server.get_user(name_buffer.trim()).await.unwrap();
+                let user = client.get_user(name_buffer.trim()).await.unwrap();
                 println!("Got user: {user:?}");
             }
             "5" => {
@@ -302,7 +306,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut vault_buffer = String::new();
                 std::io::stdin().read_line(&mut vault_buffer).unwrap();
 
-                let user_vault = server
+                let user_vault = client
                     .get_user_vault(name_buffer.trim(), vault_buffer.trim())
                     .await
                     .unwrap();
@@ -313,7 +317,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut name_buffer = String::new();
                 std::io::stdin().read_line(&mut name_buffer).unwrap();
 
-                let all_user_vaults = server
+                let all_user_vaults = client
                     .get_all_vaults_from_user(name_buffer.trim())
                     .await
                     .unwrap();
@@ -323,7 +327,7 @@ async fn main() -> anyhow::Result<()> {
                 println!("Which user?");
                 let mut name_buffer = String::new();
                 std::io::stdin().read_line(&mut name_buffer).unwrap();
-                server.delete_user(name_buffer.trim()).await?;
+                client.delete_user(name_buffer.trim()).await?;
             }
             "8" => {
                 println!("Which user?");
@@ -334,7 +338,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut vault_buffer = String::new();
                 std::io::stdin().read_line(&mut vault_buffer).unwrap();
 
-                server
+                client
                     .delete_vault(name_buffer.trim(), vault_buffer.trim())
                     .await?;
             }
@@ -347,7 +351,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut new_buffer = String::new();
                 std::io::stdin().read_line(&mut new_buffer).unwrap();
 
-                server
+                client
                     .change_user_name(current_buffer.trim(), new_buffer.trim())
                     .await?;
             }
