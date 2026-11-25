@@ -4,7 +4,7 @@ use anyhow::bail;
 use clap::{Parser, Subcommand};
 use cli_clipboard::ClipboardProvider;
 use colored::Colorize;
-use kuhkey_core::generator::{PasswordOptions, generate_password};
+use kuhkey_core::generator::{PasswordOptions, generate_password, generate_username};
 
 const DEFAULT_PASSWORD_LENGTH: usize = 16;
 pub const MINIMUM_PASSWORD_LENGTH: usize = 1;

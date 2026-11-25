@@ -1,3 +1,4 @@
+use random_word::Lang;
 use std::char;
 
 use anyhow::{Result, bail};
@@ -26,6 +27,22 @@ pub struct PasswordOptions {
     pub exclude_lookalikes: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WordCase {
+    Lower,       // kuhkey
+    Capitalized, // Kuhkey
+    Upper,       // KUHKEY
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// maybe we delete debug afterwards
+pub struct UsernameOptions {
+    pub max_length: usize,
+    pub word_count: usize,
+    pub case: WordCase,
+    pub seperator: bool,
+}
+
 impl Default for PasswordOptions {
     fn default() -> Self {
         Self {
@@ -35,6 +52,17 @@ impl Default for PasswordOptions {
             numbers: true,
             symbols: true,
             exclude_lookalikes: false,
+        }
+    }
+}
+
+impl Default for UsernameOptions {
+    fn default() -> Self {
+        Self {
+            max_length: 20,
+            word_count: 2,
+            case: WordCase::Capitalized,
+            seperator: false,
         }
     }
 }
@@ -139,6 +167,60 @@ fn password_has_reqs(pw: &str, opts: &PasswordOptions) -> bool {
         && (opts.numbers == contains_numbers)
         && (opts.symbols == contains_symbols)
         && (!opts.exclude_lookalikes || !contains_lookalikes)
+}
+
+pub const USERNAME_SEPARATOR: char = '_';
+pub const MIN_WORD_LENGTH: usize = 4;
+
+pub fn generate_username(opts: &UsernameOptions) -> Result<String> {
+    if opts.word_count < 1 {
+        bail!("word_count must be grater then 1")
+    }
+
+    // how long one word should be
+    let mut max_word_len = opts.max_length / opts.word_count;
+
+    if opts.seperator && max_word_len > 0 {
+        max_word_len -= 1; //so we have room for the "_" seperator
+    }
+    if max_word_len < MIN_WORD_LENGTH {
+        bail!("max_length is too small for {} words", opts.word_count);
+    }
+    let mut username = String::new();
+    for i in 0..opts.word_count {
+        if opts.seperator && i > 0 {
+            username.push(USERNAME_SEPARATOR);
+        }
+        let word = pick_word(max_word_len);
+        username.push_str(&apply_case(word, opts.case));
+    }
+
+    Ok(username)
+}
+fn apply_case(word: &str, case: WordCase) -> String {
+    match case {
+        WordCase::Lower => word.to_lowercase(),
+        WordCase::Upper => word.to_uppercase(),
+        WordCase::Capitalized => {
+            let lower = word.to_lowercase();
+            let first = lower[..1].to_uppercase();
+            let rest = &lower[1..];
+            first + rest
+        }
+    }
+}
+
+fn pick_word(max_len: usize) -> &'static str {
+    loop {
+        let word = random_word::get(Lang::En);
+
+        // falls die länge nicht passt holen wir ein neues word
+        if word.len() < 3 || word.len() > max_len {
+            continue;
+        }
+
+        return word;
+    }
 }
 
 #[cfg(test)]
