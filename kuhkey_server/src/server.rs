@@ -28,9 +28,9 @@ pub struct UserAccount {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct UserVault {
-    pub user_name: String,
-    pub locked_vault: Vec<u8>,
+pub struct VaultNameIdPair {
+    pub vault_id: String,
+    pub vault_name: String,
 }
 
 /// POST /api/v1/create_tables
@@ -141,10 +141,10 @@ async fn db_get_user(
 }
 
 /// GET /api/v1/get_user_vault
-async fn db_get_user_vault(
+async fn db_get_user_vault_with_id(
     State(state): State<AppState>,
     Json((username, vault_id)): Json<(String, String)>,
-) -> Result<Json<UserVault>, StatusCode> {
+) -> Result<Json<Vec<u8>>, StatusCode> {
     let user_id = db_get_user_id(State(state), &username)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
@@ -159,35 +159,62 @@ async fn db_get_user_vault(
     }
 
     let vault_bytes = std::fs::read(&path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(Json(UserVault {
-        user_name: username,
-        locked_vault: vault_bytes,
-    }))
+    Ok(Json(vault_bytes))
+}
+
+async fn db_get_user_vault_with_name(
+    State(state): State<AppState>,
+    Json((username, vaultname)): Json<(String, String)>,
+) -> Result<Json<Vec<u8>>, StatusCode> {
+    let user_id = db_get_user_id(State(state), &username)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let user_vault_dir = PathBuf::from(BASE_VAULT_PATH).join(&user_id);
+
+    for entry in std::fs::read_dir(user_vault_dir).map_err(|_| StatusCode::NOT_FOUND)? {
+        let vault = entry.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let vault_bytes = std::fs::read(vault.path()).map_err(|_| StatusCode::NOT_FOUND)?;
+
+        let locked_vault = kuhkey_core::VaultLocked::from_bytes(&vault_bytes)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        if locked_vault.get_name() == &vaultname {
+            return Ok(Json(vault_bytes));
+        }
+    }
+
+    Err(StatusCode::NOT_FOUND)
 }
 
 /// GET /api/v1/get_all_vaults_from_user
 async fn db_get_all_vaults_from_user(
     State(state): State<AppState>,
     Json(username): Json<String>,
-) -> Result<Json<Vec<UserVault>>, StatusCode> {
+) -> Result<Json<Vec<VaultNameIdPair>>, StatusCode> {
     let user_id = db_get_user_id(State(state), &username)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
     let vault_path = PathBuf::from(BASE_VAULT_PATH).join(&user_id);
 
-    let user_vaults: Vec<UserVault> = std::fs::read_dir(&vault_path)
+    let user_vaults: Vec<VaultNameIdPair> = std::fs::read_dir(&vault_path)
         .map_err(|_| StatusCode::NOT_FOUND)?
         .filter_map(|file| file.ok()) // Ignore `None` vaules
         .filter(|file| file.path().is_file()) // Only collect files
         .map(|file| file.file_name().to_string_lossy().into_owned()) // Get file names
         .map(|file_name| {
+            dbg!(&file_name);
             // TODO: Figure out how to do this without unwrapping
-            let vault_bytes = std::fs::read(&file_name).unwrap();
+            let path = PathBuf::from(BASE_VAULT_PATH)
+                .join(&user_id)
+                .join(&file_name);
+            let vault_bytes = std::fs::read(path).unwrap();
+            let vault_header = kuhkey_core::VaultLocked::from_bytes(&vault_bytes).unwrap();
 
-            UserVault {
-                user_name: username.clone(),
-                locked_vault: vault_bytes,
+            VaultNameIdPair {
+                vault_id: vault_header.get_id().to_string(),
+                vault_name: vault_header.get_name().to_string(),
             }
         })
         .collect();
@@ -273,7 +300,14 @@ fn app(conn: Connection) -> Router {
         .route("/api/v1/create_user", post(db_create_user))
         .route("/api/v1/create_user_vault", post(db_create_user_vault))
         .route("/api/v1/get_user", get(db_get_user))
-        .route("/api/v1/get_user_vault", get(db_get_user_vault))
+        .route(
+            "/api/v1/get_user_vault_with_id",
+            get(db_get_user_vault_with_id),
+        )
+        .route(
+            "/api/v1/get_user_vault_with_name",
+            get(db_get_user_vault_with_name),
+        )
         .route(
             "/api/v1/get_all_vaults_from_user",
             get(db_get_all_vaults_from_user),

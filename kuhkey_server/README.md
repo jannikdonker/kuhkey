@@ -16,7 +16,8 @@ These API calls are exposed:
 create_user_account(name: String) -> Result<()>;
 create_user_vault(username: String, vaultname: String) -> Result<()>;
 get_user(username: String) -> Result<UserAccount>;
-get_user_vault(username: String) -> Result<UserVault>;
-get_all_vaults_from_user(username: String) -> Result<Vec<UserVault>>;
+get_user_vault_with_id(username: String, vault_id: String) -> Result<LockedVault>;
+get_user_vault_with_name(username: String, vaultname: String) -> Result<LockedVault>;
+get_all_vaults_from_user(username: String) -> Result<Vec<VaultNameIdPair>>;
 delete_user(name: String) -> Result<()>;
 ```
