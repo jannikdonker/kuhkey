@@ -25,9 +25,9 @@ const NONCE_LEN: usize = 24; // 24 for XChaCha20 (12 for AES-GCM)
 const SALT_LEN: usize = 16; // 16 for Argon2
 const KEY_LEN: usize = 32;
 
-/// MAGIC_BYTES + VERSION + UUID + NONCE + SALT + KdFParams + name length (u8).
+/// MAGIC_BYTES + VERSION + UUID + NONCE + SALT + KdFParams + Timestamps + name length (u8).
 /// The variable-length vault name follows directly after.
-const HEADER_FIXED_LEN: usize = 4 + 4 + 16 + NONCE_LEN + SALT_LEN + 12 + 1;
+const HEADER_FIXED_LEN: usize = 4 + 4 + 16 + NONCE_LEN + SALT_LEN + 12 + 3 * 8 + 1;
 
 /// The name length is stored as a u8
 const MAX_VAULT_NAME_LEN: usize = u8::MAX as usize;
@@ -298,17 +298,20 @@ impl KdfParams {
     }
 }
 
-// Bytes: 4 + 4 + 16 + 24 + 16 + 12 + 1 = 77, followed by 0..=255 bytes of name
+// Bytes: 4 + 4 + 16 + 24 + 16 + 12 + 1 + 3 * 8 = 101, followed by 0..=255 bytes of name
 // The header is stored in plaintext (but authenticated), so the name is readable without the password.
 #[derive(Clone)]
-struct VaultHeader {
+pub struct VaultHeader {
     magic: [u8; 4],
     version: u32,
     id: Uuid,
     nonce: [u8; NONCE_LEN],
     salt: [u8; SALT_LEN],
     kdf_params: KdfParams, // 12 bytes (3 * u32)
-    name: String,          // u8 length prefix + utf-8 bytes
+    created: u64,
+    modified: u64,
+    last_used: u64,
+    name: String, // u8 length prefix + utf-8 bytes
 }
 
 impl VaultHeader {
@@ -329,8 +332,59 @@ impl VaultHeader {
             nonce,
             salt,
             kdf_params,
+            created: current_timestamp_secs(),
+            modified: current_timestamp_secs(),
+            last_used: 0,
             name: name.to_owned(),
         })
+    }
+
+    /// Return the vaults Uuid.
+    pub fn get_id(&self) -> &Uuid {
+        &self.id
+    }
+
+    /// Return the vaults version.
+    pub fn get_version(&self) -> u32 {
+        self.version
+    }
+
+    /// Return the vaults name.
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+
+    /// Return the vault created timestamp.
+    pub fn get_created(&self) -> SystemTime {
+        systemtime_from_timestamp(self.created)
+    }
+
+    /// Return the vault modified timestamp.
+    pub fn get_modified(&self) -> SystemTime {
+        systemtime_from_timestamp(self.modified)
+    }
+
+    /// Return the vault last_used timestamp.
+    pub fn get_last_used(&self) -> SystemTime {
+        systemtime_from_timestamp(self.last_used)
+    }
+
+    /// Set the vault name. (Max length is 255 chars)
+    pub fn set_name(&mut self, name: &str) -> Result<()> {
+        if name.len() > MAX_VAULT_NAME_LEN {
+            bail!("vault name too long")
+        }
+
+        self.modified = current_timestamp_secs();
+        self.name = name.to_string();
+
+        Ok(())
+    }
+
+    /// Set the vaults version.
+    pub fn set_version(&mut self, version: u32) {
+        self.modified = current_timestamp_secs();
+        self.version = version;
     }
 
     fn to_bytes(&self) -> Vec<u8> {
@@ -344,6 +398,9 @@ impl VaultHeader {
         bytes.extend_from_slice(&self.nonce);
         bytes.extend_from_slice(&self.salt);
         bytes.extend_from_slice(&self.kdf_params.to_bytes());
+        bytes.extend_from_slice(&self.created.to_le_bytes());
+        bytes.extend_from_slice(&self.modified.to_le_bytes());
+        bytes.extend_from_slice(&self.last_used.to_le_bytes());
         bytes.push(name_len);
         bytes.extend_from_slice(self.name.as_bytes());
         bytes
@@ -362,6 +419,9 @@ impl VaultHeader {
         let (nonce, fixed) = fixed.split_first_chunk::<NONCE_LEN>().unwrap();
         let (salt, fixed) = fixed.split_first_chunk::<SALT_LEN>().unwrap();
         let (kdf, fixed) = fixed.split_first_chunk::<12>().unwrap();
+        let (created, fixed) = fixed.split_first_chunk::<8>().unwrap();
+        let (modified, fixed) = fixed.split_first_chunk::<8>().unwrap();
+        let (last_used, fixed) = fixed.split_first_chunk::<8>().unwrap();
         let (name_len, _) = fixed.split_first_chunk::<1>().unwrap();
 
         if *magic != MAGIC_BYTES {
@@ -397,6 +457,9 @@ impl VaultHeader {
             nonce: *nonce,
             salt: *salt,
             kdf_params,
+            created: u64::from_le_bytes(*created),
+            modified: u64::from_le_bytes(*modified),
+            last_used: u64::from_le_bytes(*last_used),
             name,
         };
         Ok((header, payload))
@@ -418,6 +481,11 @@ impl VaultLocked {
     /// Returns the vault's unique identifier.
     pub fn get_id(&self) -> &Uuid {
         &self.header.id
+    }
+
+    /// Return the vault header.
+    pub fn get_header(&self) -> &VaultHeader {
+        &self.header
     }
 
     /// Serializes the locked vault (header followed by encrypted payload) into bytes.
@@ -488,6 +556,11 @@ impl VaultUnlocked {
     /// Returns the vault's unique identifier.
     pub fn get_id(&self) -> &Uuid {
         &self.header.id
+    }
+
+    /// Return the vault header.
+    pub fn get_header(&self) -> &VaultHeader {
+        &self.header
     }
 
     /// Updates the vault's name. Fails if `new_name` exceeds `MAX_VAULT_NAME_LEN` bytes.
@@ -645,6 +718,9 @@ mod tests {
                 t_cost: 5,
                 p_cost: 6,
             },
+            created: current_timestamp_secs(),
+            modified: current_timestamp_secs(),
+            last_used: 0,
             name: "Personal".to_owned(),
         }
     }
@@ -679,6 +755,74 @@ mod tests {
             (r.m_cost, r.t_cost, r.p_cost),
             (d.m_cost, d.t_cost, d.p_cost)
         );
+    }
+
+    #[test]
+    fn header_getters_return_expected_values() {
+        let mut h = header();
+        h.created = 1_700_000_000;
+        h.modified = 1_700_000_100;
+        h.last_used = 1_700_000_200;
+
+        assert_eq!(h.get_id(), &h.id);
+        assert_eq!(h.get_version(), VAULT_VERSION);
+        assert_eq!(h.get_name(), "Personal");
+        assert_eq!(h.get_created(), systemtime_from_timestamp(1_700_000_000));
+        assert_eq!(h.get_modified(), systemtime_from_timestamp(1_700_000_100));
+        assert_eq!(h.get_last_used(), systemtime_from_timestamp(1_700_000_200));
+    }
+
+    #[test]
+    fn header_new_initializes_metadata() {
+        let h = VaultHeader::new("Personal", KdfParams::default()).unwrap();
+        assert_eq!(h.get_name(), "Personal");
+        assert_eq!(h.get_version(), VAULT_VERSION);
+        assert_eq!(h.get_created(), h.get_modified());
+        assert_eq!(h.get_last_used(), UNIX_EPOCH);
+    }
+
+    #[test]
+    fn header_timestamps_survive_roundtrip() {
+        let mut h = header();
+        h.created = 1_700_000_000;
+        h.modified = 1_700_000_100;
+        h.last_used = 1_700_000_200;
+
+        let (r, _) = VaultHeader::from_bytes(&h.to_bytes()).unwrap();
+        assert_eq!(r.get_id(), h.get_id());
+        assert_eq!(r.get_created(), h.get_created());
+        assert_eq!(r.get_modified(), h.get_modified());
+        assert_eq!(r.get_last_used(), h.get_last_used());
+    }
+
+    #[test]
+    fn header_set_name_updates_name_and_modified() {
+        let mut h = header();
+        h.modified = 1_700_000_000;
+
+        h.set_name("Work").unwrap();
+        assert_eq!(h.get_name(), "Work");
+        assert!(h.get_modified() > systemtime_from_timestamp(1_700_000_000));
+    }
+
+    #[test]
+    fn header_set_name_rejects_too_long_name_and_keeps_old_one() {
+        let mut h = header();
+        h.modified = 1_700_000_000;
+
+        assert!(h.set_name(&"a".repeat(MAX_VAULT_NAME_LEN + 1)).is_err());
+        assert_eq!(h.get_name(), "Personal");
+        assert_eq!(h.get_modified(), systemtime_from_timestamp(1_700_000_000));
+    }
+
+    #[test]
+    fn header_set_version_updates_version_and_modified() {
+        let mut h = header();
+        h.modified = 1_700_000_000;
+
+        h.set_version(2);
+        assert_eq!(h.get_version(), 2);
+        assert!(h.get_modified() > systemtime_from_timestamp(1_700_000_000));
     }
 
     #[test]
