@@ -301,7 +301,7 @@ impl KdfParams {
 // Bytes: 4 + 4 + 16 + 24 + 16 + 12 + 1 + 3 * 8 = 101, followed by 0..=255 bytes of name
 // The header is stored in plaintext (but authenticated), so the name is readable without the password.
 #[derive(Clone)]
-struct VaultHeader {
+pub struct VaultHeader {
     magic: [u8; 4],
     version: u32,
     id: Uuid,
@@ -483,6 +483,11 @@ impl VaultLocked {
         &self.header.id
     }
 
+    /// Return the vault header.
+    pub fn get_header(&self) -> &VaultHeader {
+        &self.header
+    }
+
     /// Serializes the locked vault (header followed by encrypted payload) into bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = self.header.to_bytes();
@@ -551,6 +556,11 @@ impl VaultUnlocked {
     /// Returns the vault's unique identifier.
     pub fn get_id(&self) -> &Uuid {
         &self.header.id
+    }
+
+    /// Return the vault header.
+    pub fn get_header(&self) -> &VaultHeader {
+        &self.header
     }
 
     /// Updates the vault's name. Fails if `new_name` exceeds `MAX_VAULT_NAME_LEN` bytes.
