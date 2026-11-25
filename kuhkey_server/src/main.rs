@@ -63,27 +63,6 @@ impl KuhKeyClient {
         Ok(())
     }
 
-    /// Create an empty vault for a user
-    pub async fn create_user_vault(
-        &self,
-        user_name: impl Into<String>,
-        locked_vault_bytes: &[u8],
-    ) -> anyhow::Result<()> {
-        let user_name = user_name.into();
-
-        string_has_illegal_chars(&user_name)?;
-
-        self.client
-            .post(format!("{BASE_URL}/create_user_vault"))
-            .json(&(&user_name, locked_vault_bytes))
-            .send()
-            .await?
-            .error_for_status()?;
-
-        println!("[INFO]: Created a vault for user `{}`", user_name);
-        Ok(())
-    }
-
     /// Request a user
     pub async fn get_user(&self, user_name: impl Into<String>) -> anyhow::Result<UserAccount> {
         let user_name = user_name.into();
@@ -255,6 +234,30 @@ impl KuhKeyClient {
         println!("[INFO]: Successfully changed name from `{current_name}` to `{new_name}`");
         Ok(())
     }
+
+    pub async fn is_sync_needed(
+        &self,
+        user_name: String,
+        vault: VaultLocked,
+    ) -> anyhow::Result<bool> {
+        let vault_header = vault.get_header();
+
+        let sync_needed: bool = self
+            .client
+            .get(format!("{BASE_URL}/is_sync_needed"))
+            .json(&(
+                &user_name,
+                &vault_header.get_id().to_string(),
+                &vault_header.get_modified(),
+            ))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+
+        Ok(sync_needed)
+    }
 }
 
 // TODO: This will later be a lib.rs file, exposing just the Server struct and its's calls
@@ -280,14 +283,13 @@ async fn main() -> anyhow::Result<()> {
     loop {
         println!("[1] To set up tables in the DB");
         println!("[2] To create a test account");
-        println!("[3] To create a test vault for a test account");
-        println!("[4] To request a test account");
-        println!("[5] To request a test account vault with ID of the vault");
-        println!("[6] To request a test account vault with the name of the vault");
-        println!("[7] To request all the vaults from the test account");
-        println!("[8] To delete a test account and their vaults");
-        println!("[9] To delete a vault from a test account");
-        println!("[10] To change the username for a test account");
+        println!("[3] To request a test account");
+        println!("[4] To request a test account vault with ID of the vault");
+        println!("[5] To request a test account vault with the name of the vault");
+        println!("[6] To request all the vaults from the test account");
+        println!("[7] To delete a test account and their vaults");
+        println!("[8] To delete a vault from a test account");
+        println!("[9] To change the username for a test account");
         println!("[q] to exit");
 
         // This is only here for testing so .expect() is fine
@@ -304,22 +306,6 @@ async fn main() -> anyhow::Result<()> {
                 client.create_user_account(name_buffer.trim()).await?
             }
             "3" => {
-                println!("Enter the username for which to create the vault");
-                let mut name_buffer = String::new();
-                std::io::stdin().read_line(&mut name_buffer).unwrap();
-
-                println!("What should the test vault be named?");
-                let mut vault_buffer = String::new();
-                std::io::stdin().read_line(&mut vault_buffer).unwrap();
-
-                let vault = kuhkey_core::VaultUnlocked::new(vault_buffer.trim()).unwrap();
-                let vault = vault.lock("test_password").unwrap();
-
-                client
-                    .create_user_vault(name_buffer.trim(), &vault.to_bytes())
-                    .await?
-            }
-            "4" => {
                 println!("Which user?");
                 let mut name_buffer = String::new();
                 std::io::stdin().read_line(&mut name_buffer).unwrap();
@@ -327,7 +313,7 @@ async fn main() -> anyhow::Result<()> {
                 let user = client.get_user(name_buffer.trim()).await.unwrap();
                 println!("Got user: {user:?}");
             }
-            "5" => {
+            "4" => {
                 println!("Which user?");
                 let mut name_buffer = String::new();
                 std::io::stdin().read_line(&mut name_buffer).unwrap();
@@ -342,7 +328,7 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap();
                 println!("Got user vault: {}", user_vault.get_name());
             }
-            "6" => {
+            "5" => {
                 println!("Which user?");
                 let mut name_buffer = String::new();
                 std::io::stdin().read_line(&mut name_buffer).unwrap();
@@ -357,7 +343,7 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap();
                 println!("Got user vault: {}", user_vault.get_name());
             }
-            "7" => {
+            "6" => {
                 println!("Which user?");
                 let mut name_buffer = String::new();
                 std::io::stdin().read_line(&mut name_buffer).unwrap();
@@ -368,13 +354,13 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap();
                 println!("Got all user vaults: {all_user_vaults:?}");
             }
-            "8" => {
+            "7" => {
                 println!("Which user?");
                 let mut name_buffer = String::new();
                 std::io::stdin().read_line(&mut name_buffer).unwrap();
                 client.delete_user(name_buffer.trim()).await?;
             }
-            "9" => {
+            "8" => {
                 println!("Which user?");
                 let mut name_buffer = String::new();
                 std::io::stdin().read_line(&mut name_buffer).unwrap();
@@ -387,7 +373,7 @@ async fn main() -> anyhow::Result<()> {
                     .delete_vault(name_buffer.trim(), vault_buffer.trim())
                     .await?;
             }
-            "10" => {
+            "9" => {
                 println!("Current username");
                 let mut current_buffer = String::new();
                 std::io::stdin().read_line(&mut current_buffer).unwrap();

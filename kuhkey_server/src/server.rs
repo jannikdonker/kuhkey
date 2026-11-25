@@ -10,6 +10,7 @@ use std::{
     net::SocketAddr,
     path::PathBuf,
     sync::{Arc, Mutex},
+    time::SystemTime,
 };
 
 const BASE_VAULT_PATH: &str = "temp/vaults";
@@ -77,33 +78,6 @@ async fn db_create_user(
         Ok(_) => Ok(StatusCode::CREATED),
         Err(err) => {
             eprintln!("Error while creating vault directory for user: {:?}", err);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
-}
-
-/// POST /api/v1/create_user_vault
-async fn db_create_user_vault(
-    State(state): State<AppState>,
-    Json((username, locked_vault_bytes)): Json<(String, Vec<u8>)>,
-) -> Result<StatusCode, StatusCode> {
-    let Ok(user_id) = db_get_user_id(State(state), &username).await else {
-        return Err(StatusCode::NOT_FOUND);
-    };
-
-    let vault = kuhkey_core::VaultLocked::from_bytes(&locked_vault_bytes)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let vault_name = format!("{}.{FILE_EXTENSION}", vault.get_id().to_string());
-
-    let path = PathBuf::from(BASE_VAULT_PATH)
-        .join(&user_id)
-        .join(&vault_name);
-    let write_result = vault.write_to_disk(Some(&path));
-
-    match write_result {
-        Ok(_) => Ok(StatusCode::CREATED),
-        Err(err) => {
-            eprintln!("Error while creating vault for user: {:?}", err);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -248,7 +222,7 @@ async fn db_delete_vault(
     State(state): State<AppState>,
     Json((username, vaultname)): Json<(String, String)>,
 ) -> Result<StatusCode, StatusCode> {
-    let user_id = db_get_user_id(State(state.clone()), &username)
+    let user_id = db_get_user_id(State(state), &username)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
@@ -281,6 +255,40 @@ async fn db_change_user_name(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn db_is_sync_needed(
+    State(state): State<AppState>,
+    Json((username, vault_id, vault_modified)): Json<(String, String, SystemTime)>,
+) -> Result<Json<bool>, StatusCode> {
+    let user_id = db_get_user_id(State(state), &username)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let vault_path = PathBuf::from(BASE_VAULT_PATH)
+        .join(&user_id)
+        .join(format!("{vault_id}.{FILE_EXTENSION}"));
+
+    // TODO: use the non blocking fs calls everywhere else in here
+    let db_vault_bytes = match tokio::fs::read(&vault_path).await {
+        Ok(bytes) => bytes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // When the vault does not exist on the server, the client needs to sync
+            return Ok(Json(true));
+        }
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+
+    let db_vault = kuhkey_core::VaultLocked::from_bytes(&db_vault_bytes)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let db_vault_modified = db_vault.get_header().get_modified();
+
+    // The modified time of the client vault and the server vault are not the same
+    // => sync
+    let need_sync = db_vault_modified != vault_modified;
+
+    Ok(Json(need_sync))
+}
+
 async fn db_get_user_id(State(state): State<AppState>, username: &str) -> rusqlite::Result<String> {
     let conn = state.connection.lock().unwrap();
     let mut statement = conn.prepare("SELECT id FROM user WHERE name = ?1")?;
@@ -299,7 +307,6 @@ fn app(conn: Connection) -> Router {
     Router::new()
         .route("/api/v1/create_tables", post(db_create_tables))
         .route("/api/v1/create_user", post(db_create_user))
-        .route("/api/v1/create_user_vault", post(db_create_user_vault))
         .route("/api/v1/get_user", get(db_get_user))
         .route(
             "/api/v1/get_user_vault_with_id",
@@ -316,6 +323,7 @@ fn app(conn: Connection) -> Router {
         .route("/api/v1/delete_user", any(db_delete_user))
         .route("/api/v1/delete_vault", any(db_delete_vault))
         .route("/api/v1/change_user_name", post(db_change_user_name))
+        .route("/api/v1/is_sync_needed", any(db_is_sync_needed))
         .with_state(state)
 }
 
