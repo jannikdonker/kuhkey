@@ -483,9 +483,14 @@ impl VaultLocked {
         &self.header.id
     }
 
-    /// Return the vault header.
+    /// Return a reference to the vault header.
     pub fn get_header(&self) -> &VaultHeader {
         &self.header
+    }
+
+    /// Return a mutable reference to the vault header.
+    pub fn get_header_mut(&mut self) -> &mut VaultHeader {
+        &mut self.header
     }
 
     /// Serializes the locked vault (header followed by encrypted payload) into bytes.
@@ -561,6 +566,11 @@ impl VaultUnlocked {
     /// Return the vault header.
     pub fn get_header(&self) -> &VaultHeader {
         &self.header
+    }
+
+    /// Return a mutable reference to the vault header.
+    pub fn get_header_mut(&mut self) -> &mut VaultHeader {
+        &mut self.header
     }
 
     /// Updates the vault's name. Fails if `new_name` exceeds `MAX_VAULT_NAME_LEN` bytes.
