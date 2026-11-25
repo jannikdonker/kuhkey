@@ -14,7 +14,7 @@
 
 - Use the **Feature / Task** or **Bug report** template.
 - Title: `<area>: <short description>`, with area one of `core`, `cli`, `ui`, `desktop`, `ext`, `server`, `tui`.
-- Every issue needs acceptance criteria.
+- Set the priority and sprint on the project board.
 
 ## Branches
 
