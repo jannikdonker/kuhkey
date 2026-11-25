@@ -520,7 +520,7 @@ impl VaultUnlocked {
         self.entries.push(entry);
     }
 
-    /// Remove an entry from the unlocked vault. 
+    /// Remove an entry from the unlocked vault.
     /// Returns None if the entry is not in the vault.
     pub fn remove_entry(&mut self, id: &Uuid) -> Option<Entry> {
         let index = self.entries.iter().position(|e| e.get_id() == id)?;
@@ -932,6 +932,248 @@ mod tests {
     fn unlock_rejects_modified_name() {
         let mut locked = lock_vault(b"master", &unlocked_vault()).unwrap();
         locked.header.name = "Evil".to_owned();
+        assert!(unlock_vault(b"master", &locked).is_err());
+    }
+
+    fn entry_ids(v: &VaultUnlocked) -> Vec<Uuid> {
+        v.get_entries().iter().map(|e| *e.get_id()).collect()
+    }
+
+    #[test]
+    fn new_vault_has_no_entries() {
+        let v = VaultUnlocked::new("Personal").unwrap();
+        assert!(v.get_entries().is_empty());
+    }
+
+    #[test]
+    fn add_entry_appends_in_insertion_order() {
+        let mut v = VaultUnlocked::new("Personal").unwrap();
+        let a = Entry::new("Reddit", "hunter2", "muh", "kuh.de", "");
+        let b = Entry::new("Facebook", "pw", "", "", "notes");
+        let (a_id, b_id) = (*a.get_id(), *b.get_id());
+
+        v.add_entry(a);
+        assert_eq!(entry_ids(&v), [a_id]);
+        v.add_entry(b);
+        assert_eq!(entry_ids(&v), [a_id, b_id]);
+        assert_eq!(v.get_entries()[1].get_name(), "Facebook");
+    }
+
+    #[test]
+    fn get_entry_finds_entry_by_id() {
+        let v = unlocked_vault();
+        let id = *v.entries[1].get_id();
+        let e = v.get_entry(&id).unwrap();
+        assert_eq!(e.get_id(), &id);
+        assert_eq!(e.get_name(), "Facebook");
+    }
+
+    #[test]
+    fn get_entry_returns_none_for_unknown_id() {
+        let v = unlocked_vault();
+        assert!(v.get_entry(&Uuid::new_v4()).is_none());
+    }
+
+    #[test]
+    fn get_entry_mut_changes_are_visible_in_vault() {
+        let mut v = unlocked_vault();
+        let id = *v.entries[0].get_id();
+        v.get_entry_mut(&id).unwrap().set_password("correct horse");
+        assert_eq!(v.get_entry(&id).unwrap().get_password(), "correct horse");
+        // the other entry is untouched
+        assert_eq!(v.entries[1].get_password(), "pw");
+    }
+
+    #[test]
+    fn get_entry_mut_returns_none_for_unknown_id() {
+        let mut v = unlocked_vault();
+        assert!(v.get_entry_mut(&Uuid::new_v4()).is_none());
+    }
+
+    #[test]
+    fn remove_entry_returns_entry_and_keeps_order_of_others() {
+        let mut v = unlocked_vault();
+        v.add_entry(Entry::new("GitHub", "gh", "", "", ""));
+        let ids = entry_ids(&v);
+
+        // Remove the first entry, so a swap_remove would reorder the rest to [2, 1]
+        let removed = v.remove_entry(&ids[0]).unwrap();
+        assert_eq!(removed.get_id(), &ids[0]);
+        assert_eq!(removed.get_name(), "Reddit");
+        assert_eq!(entry_ids(&v), [ids[1], ids[2]]);
+        assert!(v.get_entry(&ids[0]).is_none());
+    }
+
+    #[test]
+    fn remove_entry_returns_none_for_unknown_id() {
+        let mut v = unlocked_vault();
+        let before = entry_ids(&v);
+        assert!(v.remove_entry(&Uuid::new_v4()).is_none());
+        assert_eq!(entry_ids(&v), before);
+    }
+
+    #[test]
+    fn remove_entry_twice_returns_none_the_second_time() {
+        let mut v = unlocked_vault();
+        let id = *v.entries[0].get_id();
+        assert!(v.remove_entry(&id).is_some());
+        assert!(v.remove_entry(&id).is_none());
+        assert_eq!(v.get_entries().len(), 1);
+    }
+
+    #[test]
+    fn entry_changes_survive_lock_unlock() {
+        let mut v = unlocked_vault();
+        let ids = entry_ids(&v);
+        let added = Entry::new("GitHub", "gh", "octocat", "github.com", "");
+        let added_id = *added.get_id();
+
+        v.add_entry(added);
+        assert!(v.remove_entry(&ids[0]).is_some());
+        v.get_entry_mut(&ids[1]).unwrap().set_username("kuh");
+
+        let r = unlock_vault(b"master", &lock_vault(b"master", &v).unwrap()).unwrap();
+        assert_eq!(entry_ids(&r), [ids[1], added_id]);
+        assert_eq!(r.get_entry(&ids[1]).unwrap().get_username(), "kuh");
+        assert_eq!(r.get_entry(&added_id).unwrap().get_url(), "github.com");
+    }
+
+    /// A unique directory under the system temp dir that is removed again on drop.
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!("kuhkey-test-{}", Uuid::new_v4()));
+            std::fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn locked_vault() -> VaultLocked {
+        lock_vault(b"master", &unlocked_vault()).unwrap()
+    }
+
+    #[test]
+    fn write_read_disk_roundtrip() {
+        let dir = TempDir::new();
+        let path = dir.0.join("vault.barn");
+        let locked = locked_vault();
+
+        let written = locked.write_to_disk(Some(&path)).unwrap();
+        assert_eq!(written, path);
+        assert_eq!(std::fs::read(&path).unwrap(), locked.to_bytes());
+
+        let read = VaultLocked::read_from_disk(&path).unwrap();
+        assert_eq!(read.get_id(), locked.get_id());
+        assert_eq!(read.get_name(), "Personal");
+        assert_eq!(read.to_bytes(), locked.to_bytes());
+    }
+
+    #[test]
+    fn unlock_after_disk_roundtrip() {
+        let dir = TempDir::new();
+        let v = unlocked_vault();
+        let path = lock_vault(b"master", &v)
+            .unwrap()
+            .write_to_disk(Some(&dir.0.join("vault.barn")))
+            .unwrap();
+
+        let r = unlock_vault(b"master", &VaultLocked::read_from_disk(&path).unwrap()).unwrap();
+        assert_eq!(r.get_id(), v.get_id());
+        assert_eq!(r.entries.len(), v.entries.len());
+        for (a, b) in r.entries.iter().zip(&v.entries) {
+            assert_eq!(a.to_bytes(), b.to_bytes());
+        }
+    }
+
+    #[test]
+    fn write_to_disk_creates_missing_parent_dirs() {
+        let dir = TempDir::new();
+        let path = dir.0.join("nested").join("dirs").join("vault.barn");
+        let locked = locked_vault();
+
+        locked.write_to_disk(Some(&path)).unwrap();
+        assert_eq!(
+            VaultLocked::read_from_disk(&path).unwrap().to_bytes(),
+            locked.to_bytes()
+        );
+    }
+
+    #[test]
+    fn write_to_disk_overwrites_existing_file() {
+        let dir = TempDir::new();
+        let path = dir.0.join("vault.barn");
+        // Longer than the vault, so any leftover bytes would show up after the write
+        std::fs::write(&path, [0xAB; 4096]).unwrap();
+        let locked = locked_vault();
+
+        locked.write_to_disk(Some(&path)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), locked.to_bytes());
+    }
+
+    #[test]
+    fn write_to_disk_leaves_no_tmp_file_behind() {
+        let dir = TempDir::new();
+        locked_vault()
+            .write_to_disk(Some(&dir.0.join("vault.barn")))
+            .unwrap();
+
+        let files: Vec<_> = std::fs::read_dir(&dir.0)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(files, ["vault.barn"]);
+    }
+
+    #[test]
+    fn write_to_disk_defaults_to_data_dir() {
+        let locked = locked_vault();
+        let expected = data_dir()
+            .unwrap()
+            .join(APP_ID)
+            .join(format!("{}.barn", locked.get_id()));
+
+        let path = locked.write_to_disk(None).unwrap();
+        // Read and clean up before asserting, so a failing assert doesn't leave the file behind
+        let read = VaultLocked::read_from_disk(&path);
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(path, expected);
+        assert_eq!(read.unwrap().to_bytes(), locked.to_bytes());
+    }
+
+    #[test]
+    fn read_from_disk_rejects_missing_file() {
+        let dir = TempDir::new();
+        assert!(VaultLocked::read_from_disk(&dir.0.join("missing.barn")).is_err());
+    }
+
+    #[test]
+    fn read_from_disk_rejects_non_vault_file() {
+        let dir = TempDir::new();
+        let path = dir.0.join("vault.barn");
+        std::fs::write(&path, b"definitely not a vault").unwrap();
+        assert!(VaultLocked::read_from_disk(&path).is_err());
+    }
+
+    #[test]
+    fn tampered_file_on_disk_fails_to_unlock() {
+        let dir = TempDir::new();
+        let path = locked_vault()
+            .write_to_disk(Some(&dir.0.join("vault.barn")))
+            .unwrap();
+        let mut bytes = std::fs::read(&path).unwrap();
+        *bytes.last_mut().unwrap() ^= 1;
+        std::fs::write(&path, bytes).unwrap();
+
+        // The header is still intact so reading succeeds, but the auth tag no longer matches
+        let locked = VaultLocked::read_from_disk(&path).unwrap();
         assert!(unlock_vault(b"master", &locked).is_err());
     }
 }
