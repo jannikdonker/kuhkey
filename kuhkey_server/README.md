@@ -19,15 +19,6 @@ get_user_vault_with_id(username: String, vault_id: String) -> Result<LockedVault
 get_user_vault_with_name(username: String, vaultname: String) -> Result<LockedVault>;
 get_all_vaults_from_user(username: String) -> Result<Vec<VaultNameIdPair>>;
 delete_user(name: String) -> Result<()>;
-sync_needed(username: String, vault: LockedVault) -> Result<bool>;
-```
-
-Needed
-
-```rust
+is_sync_needed(username: String, vault: LockedVault) -> Result<bool>;
 sync(username: String, vault: LockedVault) -> Result<LockedVault>;
 ```
-
-TODO: 
-
-- Use non blocking tokio fs calls everywhere

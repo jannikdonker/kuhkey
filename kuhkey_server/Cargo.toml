@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 kuhkey_core = { path = "../kuhkey_core" }
 anyhow = "1.0.105"
-axum = "0.8.9"
+axum = { version = "0.8.9", features = [] }
 reqwest = { version = "0.13.5", features = ["json"] }
 rusqlite = { version = "0.43.0", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }

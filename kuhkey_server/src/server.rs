@@ -55,29 +55,35 @@ async fn db_create_user(
     Json(username): Json<String>,
 ) -> Result<StatusCode, StatusCode> {
     // Unwrap here is safe because we are not in a multithreaded environment
-    let conn = state.connection.lock().unwrap();
     let user_id = String::from(uuid::Uuid::new_v4());
-    let rows = conn
-        .execute(
-            // TODO: This ignores users with the same name so we don't have multiple entries for the same user
+    // We have to scope the connection here so we drop the mutex on `conn` before we use .await later down
+    let rows = {
+        let conn = state.connection.lock().unwrap();
+        conn.execute(
             "INSERT INTO user (id, name) VALUES (?1, ?2) ON CONFLICT(name) DO NOTHING;",
             (&user_id, &username),
         )
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    // This is only needed for our tests right now
-    // In case we create the same user multiple times, do not create a new vault for them
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    };
+    // The username did already exist
     if rows == 0 {
-        return Ok(StatusCode::OK);
+        return Err(StatusCode::CONFLICT);
     }
 
-    // Create a vault directory for the user
-    // This is just how we have to do it right now..
-    let result = std::fs::create_dir(format!("{BASE_VAULT_PATH}/{}", user_id));
+    // Safe to await now because the Mutex has been dropped
+    let result = tokio::fs::create_dir(format!("{BASE_VAULT_PATH}/{}", user_id)).await;
     match result {
         Ok(_) => Ok(StatusCode::CREATED),
         Err(err) => {
             eprintln!("Error while creating vault directory for user: {:?}", err);
+            eprintln!("Removing DB entry...");
+
+            // When unable to create a vault dir for the user, also delete the DB entry we just created
+            // This should really never fail...
+            // No need to unwrap this or return an error for this because we error the next line anyway
+            let conn = state.connection.lock().unwrap();
+            let _ = conn.execute("DELETE FROM user WHERE name = ?1;", (&username,));
+
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
@@ -132,7 +138,9 @@ async fn db_get_user_vault_with_id(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    let vault_bytes = std::fs::read(&path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let vault_bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(vault_bytes))
 }
 
@@ -147,14 +155,17 @@ async fn db_get_user_vault_with_name(
 
     let user_vault_dir = PathBuf::from(BASE_VAULT_PATH).join(&user_id);
 
+    // TODO: Implement tokio::fs::read_dir here (not an iterator so bigger change)
     for entry in std::fs::read_dir(user_vault_dir).map_err(|_| StatusCode::NOT_FOUND)? {
         let vault = entry.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        let vault_bytes = std::fs::read(vault.path()).map_err(|_| StatusCode::NOT_FOUND)?;
+        let vault_bytes = tokio::fs::read(vault.path())
+            .await
+            .map_err(|_| StatusCode::NOT_FOUND)?;
 
         let locked_vault = kuhkey_core::VaultLocked::from_bytes(&vault_bytes)
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-        if locked_vault.get_name() == &vaultname {
+        if locked_vault.get_name() == vaultname {
             return Ok(Json(vault_bytes));
         }
     }
@@ -173,17 +184,18 @@ async fn db_get_all_vaults_from_user(
 
     let vault_path = PathBuf::from(BASE_VAULT_PATH).join(&user_id);
 
+    // TODO: Implement tokio::fs::read_dir here (not an iterator so bigger change)
     let user_vaults: Vec<VaultNameIdPair> = std::fs::read_dir(&vault_path)
         .map_err(|_| StatusCode::NOT_FOUND)?
         .filter_map(|file| file.ok()) // Ignore `None` vaules
         .filter(|file| file.path().is_file()) // Only collect files
         .map(|file| file.file_name().to_string_lossy().into_owned()) // Get file names
         .map(|file_name| {
-            dbg!(&file_name);
             // TODO: Figure out how to do this without unwrapping
             let path = PathBuf::from(BASE_VAULT_PATH)
                 .join(&user_id)
                 .join(&file_name);
+            // TODO: Implement tokio::fs::read here (closure is not async so bigger change) (no idea how to await a list of closures...)
             let vault_bytes = std::fs::read(path).unwrap();
             let vault_header = kuhkey_core::VaultLocked::from_bytes(&vault_bytes).unwrap();
 
@@ -208,7 +220,9 @@ async fn db_delete_user(
 
     let vault_path = PathBuf::from(BASE_VAULT_PATH).join(&user_id);
 
-    std::fs::remove_dir_all(&vault_path).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tokio::fs::remove_dir_all(&vault_path)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let conn = state.connection.lock().unwrap();
     conn.execute("DELETE FROM user WHERE name = ?1;", (&username,))
@@ -255,6 +269,7 @@ async fn db_change_user_name(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// GET /api/v1/is_sync_needed
 async fn db_is_sync_needed(
     State(state): State<AppState>,
     Json((username, vault_id, vault_modified)): Json<(String, String, SystemTime)>,
@@ -267,7 +282,6 @@ async fn db_is_sync_needed(
         .join(&user_id)
         .join(format!("{vault_id}.{FILE_EXTENSION}"));
 
-    // TODO: use the non blocking fs calls everywhere else in here
     let db_vault_bytes = match tokio::fs::read(&vault_path).await {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -282,13 +296,76 @@ async fn db_is_sync_needed(
 
     let db_vault_modified = db_vault.get_header().get_modified();
 
-    // The modified time of the client vault and the server vault are not the same
-    // => sync
+    // The modified time of the client vault and the server vault are not the same => sync
     let need_sync = db_vault_modified != vault_modified;
 
     Ok(Json(need_sync))
 }
 
+/// POST /api/v1/sync_vault
+async fn db_sync_vault(
+    State(state): State<AppState>,
+    Json((username, client_vault_bytes)): Json<(String, Vec<u8>)>,
+) -> Result<Json<Vec<u8>>, StatusCode> {
+    let user_id = db_get_user_id(State(state), &username)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    let client_vault = kuhkey_core::VaultLocked::from_bytes(&client_vault_bytes)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let client_vault_header = client_vault.get_header();
+
+    let client_vault_path = PathBuf::from(BASE_VAULT_PATH)
+        .join(&user_id)
+        .join(format!("{}.{FILE_EXTENSION}", client_vault_header.get_id()));
+
+    let server_vault_bytes = tokio::fs::read(&client_vault_path).await;
+
+    // This holds the synced vault:
+    //
+    // Client synced a vault that does not exist on the server -> Save client vault to server and return it
+    //
+    // Server has a newer modified timestamp -> Return the vault from the server
+    //
+    // Client has a newer modified timestamp -> Save client vault to server and return it
+    let synced_vault: Vec<u8> = match server_vault_bytes {
+        Ok(server_bytes) => {
+            let db_vault = kuhkey_core::VaultLocked::from_bytes(&server_bytes)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+            let client_vault_timestamp = client_vault_header.get_modified();
+            let db_vault_timestamp = db_vault.get_header().get_modified();
+
+            if db_vault_timestamp.lt(&client_vault_timestamp) {
+                // Server is outdated
+                tokio::fs::write(&client_vault_path, &client_vault_bytes)
+                    .await
+                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                client_vault_bytes
+            } else if db_vault_timestamp.gt(&client_vault_timestamp) {
+                // Client is outdated
+                server_bytes
+            } else {
+                // Both the client and server are in sync
+                client_vault_bytes
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Client vault does not exist on the server, so copy it from the client
+            tokio::fs::write(&client_vault_path, &client_vault_bytes)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            client_vault_bytes
+        }
+        Err(_) => {
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    Ok(Json(synced_vault))
+}
+
+/// Local function to retrieve the user id from the DB
 async fn db_get_user_id(State(state): State<AppState>, username: &str) -> rusqlite::Result<String> {
     let conn = state.connection.lock().unwrap();
     let mut statement = conn.prepare("SELECT id FROM user WHERE name = ?1")?;
@@ -300,6 +377,7 @@ async fn db_get_user_id(State(state): State<AppState>, username: &str) -> rusqli
     })
 }
 
+/// Handles routing
 fn app(conn: Connection) -> Router {
     let state = AppState {
         connection: Arc::new(Mutex::new(conn)),
@@ -323,7 +401,8 @@ fn app(conn: Connection) -> Router {
         .route("/api/v1/delete_user", any(db_delete_user))
         .route("/api/v1/delete_vault", any(db_delete_vault))
         .route("/api/v1/change_user_name", post(db_change_user_name))
-        .route("/api/v1/is_sync_needed", any(db_is_sync_needed))
+        .route("/api/v1/is_sync_needed", get(db_is_sync_needed))
+        .route("/api/v1/sync_vault", post(db_sync_vault))
         .with_state(state)
 }
 

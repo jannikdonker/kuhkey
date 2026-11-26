@@ -59,7 +59,6 @@ impl KuhKeyClient {
             .await?
             .error_for_status()?;
 
-        println!("[INFO]: Created user and vault user directory");
         Ok(())
     }
 
@@ -78,8 +77,6 @@ impl KuhKeyClient {
             .error_for_status()?
             .json()
             .await?;
-
-        println!("[INFO]: Successfully requested user `{}`", user_name);
 
         Ok(user_account)
     }
@@ -105,13 +102,7 @@ impl KuhKeyClient {
             .json()
             .await?;
 
-        println!(
-            "[INFO]: Successfully requested user vault from `{}` and vault id `{}`",
-            user_name, vault_id
-        );
-
-        let user_vault = kuhkey_core::VaultLocked::from_bytes(&user_vault)?;
-        Ok(user_vault)
+        kuhkey_core::VaultLocked::from_bytes(&user_vault)
     }
 
     /// Request a vault from a user using the vault name
@@ -136,13 +127,7 @@ impl KuhKeyClient {
             .json()
             .await?;
 
-        println!(
-            "[INFO]: Successfully requested user vault from `{}` and vault name `{}`",
-            user_name, vault_name
-        );
-
-        let user_vault = kuhkey_core::VaultLocked::from_bytes(&user_vault)?;
-        Ok(user_vault)
+        kuhkey_core::VaultLocked::from_bytes(&user_vault)
     }
 
     /// Request all the vaults from a user
@@ -164,11 +149,6 @@ impl KuhKeyClient {
             .json()
             .await?;
 
-        println!(
-            "[INFO]: Successfully requested all vaults from user `{}`",
-            user_name
-        );
-
         Ok(vaults_from_user)
     }
 
@@ -185,7 +165,6 @@ impl KuhKeyClient {
             .await?
             .error_for_status()?;
 
-        println!("[INFO]: Deleted user `{user_name}`");
         Ok(())
     }
 
@@ -208,7 +187,6 @@ impl KuhKeyClient {
             .await?
             .error_for_status()?;
 
-        println!("[INFO]: Deleted vault `{vault_name}` from user `{user_name}`");
         Ok(())
     }
 
@@ -231,13 +209,15 @@ impl KuhKeyClient {
             .await?
             .error_for_status()?;
 
-        println!("[INFO]: Successfully changed name from `{current_name}` to `{new_name}`");
         Ok(())
     }
 
+    /// Returns true if either the client or the server needs to sync with each other
+    ///
+    /// Note: This function does not care which of the two is out of sync!
     pub async fn is_sync_needed(
         &self,
-        user_name: String,
+        user_name: impl Into<String>,
         vault: VaultLocked,
     ) -> anyhow::Result<bool> {
         let vault_header = vault.get_header();
@@ -246,7 +226,7 @@ impl KuhKeyClient {
             .client
             .get(format!("{BASE_URL}/is_sync_needed"))
             .json(&(
-                &user_name,
+                &user_name.into(),
                 &vault_header.get_id().to_string(),
                 &vault_header.get_modified(),
             ))
@@ -257,6 +237,36 @@ impl KuhKeyClient {
             .await?;
 
         Ok(sync_needed)
+    }
+
+    /// Synchronizes the local client vault with the server's copy.
+    ///
+    /// Depending on which copy is newer, the server resolves the sync as follows:
+    ///
+    /// - **Server is newer:** Returns the server's vault so the client can overwrite its local copy.
+    /// - **Client is newer:** Overwrites the server's copy with the client's vault and returns it.
+    /// - **Equal timestamps:** Both copies are already in sync; returns the vault unchanged.
+    ///
+    /// # Note
+    /// If the vault does not exist on the server yet, the server stores the client's vault
+    /// and returns it.
+    pub async fn sync_vault(
+        &self,
+        user_name: impl Into<String>,
+        vault: VaultLocked,
+    ) -> anyhow::Result<VaultLocked> {
+        let vault_bytes = vault.to_bytes();
+        let synced_vault: Vec<u8> = self
+            .client
+            .post(format!("{BASE_URL}/sync_vault"))
+            .json(&(&user_name.into(), &vault_bytes))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+
+        kuhkey_core::VaultLocked::from_bytes(&synced_vault)
     }
 }
 
