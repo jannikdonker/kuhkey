@@ -104,6 +104,18 @@ enum Commands {
         /// put a "_" between the words
         #[arg(long = "separator", short = 's')]
         separator: bool,
+
+        /// add random numbers to the username
+        #[arg(long = "numbers", short = 'n')]
+        numbers: bool,
+
+        /// put the numbers in front instead of the end
+        #[arg(long = "front", short = 'f')]
+        numbers_front: bool,
+
+        /// how many numbers
+        #[arg(long = "num-len")]
+        numbers_len: Option<usize>,
     },
 
     /// Get the password for a given identifier
@@ -168,7 +180,19 @@ fn main() -> anyhow::Result<()> {
             word_count,
             case,
             separator,
-        } => cli_gen_username(*copy, *max_length, *word_count, *case, *separator)?,
+            numbers,
+            numbers_front,
+            numbers_len,
+        } => cli_gen_username(
+            *copy,
+            *max_length,
+            *word_count,
+            *case,
+            *separator,
+            *numbers,
+            *numbers_front,
+            *numbers_len,
+        )?,
     }
 
     Ok(())
@@ -313,6 +337,9 @@ fn cli_gen_username(
     word_count: Option<usize>,
     case: Option<CaseArg>,
     separator: bool,
+    numbers: bool,
+    numbers_front: bool,
+    numbers_len: Option<usize>,
 ) -> anyhow::Result<()> {
     // alles was der user nicht angibt kommt aus dem default
     let def = UsernameOptions::default();
@@ -321,6 +348,9 @@ fn cli_gen_username(
         word_count: word_count.unwrap_or(def.word_count),
         case: case.map(Into::into).unwrap_or(def.case),
         seperator: separator,
+        numbers,
+        numbers_front,
+        numbers_len: numbers_len.unwrap_or(def.numbers_len),
     };
 
     let username = match generate_username(&opts) {

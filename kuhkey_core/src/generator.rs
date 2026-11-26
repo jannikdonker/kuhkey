@@ -3,7 +3,7 @@ use std::char;
 
 use anyhow::{Result, bail};
 use chacha20poly1305::aead::common::getrandom;
-use rand::Rng;
+use rand::{Rng, RngExt};
 use rand_chacha::{ChaCha20Rng, rand_core::SeedableRng};
 
 pub const UPPERCASE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -34,13 +34,24 @@ pub enum WordCase {
     Upper,       // KUHKEY
 }
 
+/// settings for the username gen
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// maybe we delete debug afterwards
+// maybe we delete debug afterwards
 pub struct UsernameOptions {
+    /// max len of the whole username, numbers included
     pub max_length: usize,
+    /// how many words
     pub word_count: usize,
+    /// casing of the words
     pub case: WordCase,
+    /// put a "_" between the words
     pub seperator: bool,
+    /// add random numbers to the username
+    pub numbers: bool,
+    /// true = front, false = end
+    pub numbers_front: bool,
+    /// how many numbers, only used if `numbers` is on
+    pub numbers_len: usize,
 }
 
 impl Default for PasswordOptions {
@@ -63,6 +74,9 @@ impl Default for UsernameOptions {
             word_count: 2,
             case: WordCase::Capitalized,
             seperator: false,
+            numbers: true,
+            numbers_front: false,
+            numbers_len: 4,
         }
     }
 }
@@ -172,20 +186,35 @@ fn password_has_reqs(pw: &str, opts: &PasswordOptions) -> bool {
 pub const USERNAME_SEPARATOR: char = '_';
 pub const MIN_WORD_LENGTH: usize = 4;
 
+/// gen a username from random words, optional with numbers in front or at the end
+///
+/// errors if `word_count` is 0, `numbers_len` is 0 with numbers on,
+/// or `max_length` is too small for the words
 pub fn generate_username(opts: &UsernameOptions) -> Result<String> {
     if opts.word_count < 1 {
-        bail!("word_count must be grater then 1")
+        bail!("word_count must be higher or equal 1")
     }
 
-    // how long one word should be
-    let mut max_word_len = opts.max_length / opts.word_count;
+    let mut budget = opts.max_length;
+    if opts.numbers {
+        budget = budget.saturating_sub(opts.numbers_len); // if negative (cant do this in usize) it will be 0 instead of underflowing 
+    }
+
+    // how long one word should be max
+    let mut max_word_len = budget / opts.word_count;
 
     if opts.seperator && max_word_len > 0 {
         max_word_len -= 1; //so we have room for the "_" seperator
     }
+
+    if opts.numbers && opts.numbers_len == 0 {
+        bail!("numbers_len has to be at least 1")
+    }
+
     if max_word_len < MIN_WORD_LENGTH {
         bail!("max_length is too small for {} words", opts.word_count);
     }
+
     let mut username = String::new();
     for i in 0..opts.word_count {
         if opts.seperator && i > 0 {
@@ -194,8 +223,30 @@ pub fn generate_username(opts: &UsernameOptions) -> Result<String> {
         let word = pick_word(max_word_len);
         username.push_str(&apply_case(word, opts.case));
     }
-
+    // put the numbers in front or at the end
+    if opts.numbers {
+        let nums = random_numbers(opts.numbers_len)?;
+        if opts.numbers_front {
+            username.insert_str(0, &nums);
+        } else {
+            username.push_str(&nums);
+        }
+    }
     Ok(username)
+}
+
+/// gen a string of `len` random digits, e.g. "4821"
+// holy overpowerd
+fn random_numbers(len: usize) -> Result<String> {
+    let seed = generate_random_seed()?;
+    let mut rng = ChaCha20Rng::from_seed(seed);
+
+    let mut nums = String::new(); // we also could use with_capacity instead of new, however i think the speed difference isnt that big of a difference here
+    for _ in 0..len {
+        let digit: u8 = rng.random_range(0..10); // 0 to 9
+        nums.push_str(&digit.to_string());
+    }
+    Ok(nums)
 }
 fn apply_case(word: &str, case: WordCase) -> String {
     match case {
@@ -226,8 +277,9 @@ fn pick_word(max_len: usize) -> &'static str {
 #[cfg(test)]
 mod tests {
     use crate::generator::{
-        LOOKALIKES, LOWERCASE, NUMBERS, PasswordOptions, SYMBOLS, UPPERCASE, generate_password,
-        generate_random_seed, password_has_reqs,
+        LOOKALIKES, LOWERCASE, NUMBERS, PasswordOptions, SYMBOLS, UPPERCASE, USERNAME_SEPARATOR,
+        UsernameOptions, generate_password, generate_random_seed, generate_username,
+        password_has_reqs, random_numbers,
     };
 
     // gen is random, so run each check a bunch of times
@@ -424,5 +476,145 @@ mod tests {
         };
         assert!(!password_has_reqs("Ab1!", &opts));
         assert!(password_has_reqs("Ab3!", &opts));
+    }
+
+    // username gen
+
+    fn count_digits(s: &str) -> usize {
+        s.bytes().filter(|c| NUMBERS.contains(c)).count()
+    }
+
+    fn with_numbers(front: bool, len: usize) -> UsernameOptions {
+        UsernameOptions {
+            numbers: true,
+            numbers_front: front,
+            numbers_len: len,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn username_generation_succeeds() {
+        let opts = UsernameOptions::default();
+        assert!(generate_username(&opts).is_ok());
+    }
+
+    #[test]
+    fn username_respects_max_length() {
+        // numbers + separator both eat len, so test all combos
+        for numbers in [false, true] {
+            for seperator in [false, true] {
+                let opts = UsernameOptions {
+                    numbers,
+                    seperator,
+                    ..Default::default()
+                };
+                for _ in 0..RUNS {
+                    let name = generate_username(&opts).unwrap();
+                    assert!(name.len() <= opts.max_length, "{name} is too long");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn numbers_are_at_the_end() {
+        let opts = with_numbers(false, 4);
+        for _ in 0..RUNS {
+            let name = generate_username(&opts).unwrap();
+            let (words, nums) = name.split_at(name.len() - 4);
+            assert_eq!(count_digits(nums), 4, "no numbers at the end of {name}");
+            assert_eq!(count_digits(words), 0, "numbers in the words of {name}");
+        }
+    }
+
+    #[test]
+    fn numbers_are_in_front() {
+        let opts = with_numbers(true, 4);
+        for _ in 0..RUNS {
+            let name = generate_username(&opts).unwrap();
+            let (nums, words) = name.split_at(4);
+            assert_eq!(count_digits(nums), 4, "no numbers in front of {name}");
+            assert_eq!(count_digits(words), 0, "numbers in the words of {name}");
+        }
+    }
+
+    #[test]
+    fn numbers_respect_custom_length() {
+        for len in [1, 3, 6] {
+            let name = generate_username(&with_numbers(false, len)).unwrap();
+            assert_eq!(
+                count_digits(&name),
+                len,
+                "wrong amount of numbers in {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn no_numbers_when_off() {
+        let opts = UsernameOptions {
+            numbers: false,
+            ..Default::default()
+        };
+        for _ in 0..RUNS {
+            let name = generate_username(&opts).unwrap();
+            assert_eq!(count_digits(&name), 0, "numbers in {name}");
+        }
+    }
+
+    #[test]
+    fn separator_is_between_words() {
+        let opts = UsernameOptions {
+            word_count: 3,
+            seperator: true,
+            max_length: 30,
+            ..Default::default()
+        };
+        let name = generate_username(&opts).unwrap();
+        let seps = name.chars().filter(|&c| c == USERNAME_SEPARATOR).count();
+        assert_eq!(seps, 2, "wrong amount of separators in {name}");
+    }
+
+    #[test]
+    fn zero_numbers_len_fails() {
+        assert!(generate_username(&with_numbers(false, 0)).is_err());
+    }
+
+    #[test]
+    fn zero_words_fails() {
+        let opts = UsernameOptions {
+            word_count: 0,
+            ..Default::default()
+        };
+        assert!(generate_username(&opts).is_err());
+    }
+
+    #[test]
+    fn too_small_max_length_fails() {
+        let opts = UsernameOptions {
+            max_length: 5,
+            ..Default::default()
+        };
+        assert!(generate_username(&opts).is_err());
+    }
+
+    #[test]
+    fn numbers_longer_than_max_length_fails() {
+        // saturating_sub makes the budget 0, so this has to error and not panic
+        let opts = UsernameOptions {
+            max_length: 10,
+            ..with_numbers(false, 50)
+        };
+        assert!(generate_username(&opts).is_err());
+    }
+
+    #[test]
+    fn random_numbers_are_only_digits() {
+        for len in [0, 1, 4, 32] {
+            let nums = random_numbers(len).unwrap();
+            assert_eq!(nums.len(), len);
+            assert_eq!(count_digits(&nums), len, "non digit in {nums}");
+        }
     }
 }
