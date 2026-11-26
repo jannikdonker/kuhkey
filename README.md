@@ -7,6 +7,7 @@
 
 **A zero-knowledge, self-hosted password manager written in Rust.**
 
+[![Website](https://img.shields.io/badge/website-kuhkey.de-161616)](https://kuhkey.de)
 [![CI](https://github.com/jannikdonker/kuhkey/actions/workflows/rust.yml/badge.svg)](https://github.com/jannikdonker/kuhkey/actions/workflows/rust.yml)
 ![Rust 2024](https://img.shields.io/badge/rust-2024_edition-161616?logo=rust&logoColor=white)
 ![WebAssembly](https://img.shields.io/badge/browser-WebAssembly-161616?logo=webassembly&logoColor=white)
