@@ -2,33 +2,27 @@
 
 ## How it works
 
+The popup UI is a Dioxus app written in Rust. WXT only provides the extension shell (manifest, background, content script, bundling).
+
 ```
 kuhkey_core     Rust logic (crypto, vault, generator)
-kuhkey_ext      exports functions with #[wasm_bindgen]
+kuhkey_ext      Dioxus components (src/components/), mounted by #[wasm_bindgen(start)]
   ↓ wasm-pack build
-web/wasm/       .wasm + JS wrapper + .d.ts
-  ↓ import in TypeScript
+web/wasm/       .wasm + JS wrapper
+  ↓ main.ts only calls init()
 web/            WXT project → .output/chrome-mv3/
 ```
 
-Rust function in `kuhkey_ext/src/lib.rs`:
+- `src/lib.rs`: starts Dioxus and mounts it into `<div id="main">` in `entrypoints/popup/index.html`.
+- `src/app.rs`: root component plus shared state (entries, selected entry, toast).
+- `src/components/`: entry list (`list.rs`) and detail view (`detail.rs`).
+- `src/mock.rs`: the test entries shown for now (no login, no adding/editing yet).
+- `src/browser.rs`: clipboard.
+- Styling still comes from `entrypoints/popup/style.css`; the components use the same class names.
 
-```rust
-use wasm_bindgen::prelude::*;
-
-#[wasm_bindgen]
-pub fn greet(name: &str) -> String {
-    format!("Hello {name}")
-}
-```
-
-Called from `web/entrypoints/popup/main.ts`. `init()` loads the WASM module and must finish before the first call:
-
-```ts
-import init, { greet } from '../../wasm/kuhkey_ext.js';
-
-init().then(() => console.log(greet('Yoshi')));
-```
+Things to keep in mind (MV3 CSP allows no `eval`):
+- Don't use `document::eval`, `document::Title` & co. from Dioxus, they need `eval`.
+- Don't use `asset!()` (that only works with `dx`). Put static files in `web/public/`, they are served from the extension root (e.g. `/cow.jpeg`).
 
 ## First-time setup
 
@@ -46,11 +40,9 @@ Then reopen your terminal.
 Build the project:
 
 ```bash
-# in kuhkey_ext/
-wasm-pack build --target web --out-dir web/wasm
-
 # in kuhkey_ext/web/
 npm install
+npm run wasm   # = wasm-pack build --target web --out-dir web/wasm (in kuhkey_ext/)
 npm run dev
 ```
 
@@ -59,7 +51,7 @@ npm run dev
 ## Workflow
 
 - Changes in `web/`: reload automatically.
-- Changes to the Rust code: run `wasm-pack build` again.
+- Changes to the Rust code (the whole UI): run `npm run wasm` again.
 - `npm run build` creates the finished extension in `web/.output/chrome-mv3/`; load it via `chrome://extensions` → "Load unpacked".
 
 ## Troubleshooting

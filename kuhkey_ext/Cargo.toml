@@ -8,7 +8,11 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 kuhkey_core = { path = "../kuhkey_core" }
+dioxus = { version = "0.7", features = ["web"] }
 wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["Clipboard", "Navigator", "Window"] }
+gloo-timers = { version = "0.3", features = ["futures"] }
+uuid = "1"
 
 # psw gen needs random numbers, in the browser getrandom only gets them through js
 # with the wasm_js feature (only for wasm builds)
