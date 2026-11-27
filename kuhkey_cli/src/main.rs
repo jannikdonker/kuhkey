@@ -20,9 +20,9 @@ enum CaseArg {
     Upper,
 }
 
-impl From<CaseArg> for WordCase {
-    fn from(c: CaseArg) -> Self {
-        match c {
+impl CaseArg {
+    fn as_wordcase(self) -> WordCase {
+        match self {
             CaseArg::Lower => WordCase::Lower,
             CaseArg::Capitalized => WordCase::Capitalized,
             CaseArg::Upper => WordCase::Upper,
@@ -346,7 +346,7 @@ fn cli_gen_username(
     let opts = UsernameOptions {
         max_length: max_length.unwrap_or(def.max_length),
         word_count: word_count.unwrap_or(def.word_count),
-        case: case.map(Into::into).unwrap_or(def.case),
+        case: case.map(CaseArg::as_wordcase).unwrap_or(def.case),
         seperator: separator,
         numbers,
         numbers_front,
