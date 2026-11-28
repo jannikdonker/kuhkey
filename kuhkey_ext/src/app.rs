@@ -11,12 +11,14 @@ use crate::mock;
 
 pub const COW: &str = "/cow.jpeg";
 
+// stuff all components need, they get it with use_context
 #[derive(Clone, Copy)]
 pub struct AppState {
     pub entries: Signal<Vec<Entry>>,
     pub selected: Signal<Option<Uuid>>,
     pub notify_text: Signal<Option<String>>,
-    pub notify_count: Signal<u32>,
+    // counts up every time, so an old timer knows a newer one came after it
+    notify_count: Signal<u32>,
     copy_count: Signal<u32>,
 }
 
@@ -30,15 +32,18 @@ impl AppState {
         None
     }
 
+    // shows the green box for 1 sec
     pub fn notify(&mut self, text: &str) {
-        self.notify_count += 1;
         self.notify_text.set(Some(text.to_string()));
+        self.notify_count += 1;
+        let count_now = *self.notify_count.read();
 
-        let my_count = (self.notify_count)();
         let mut state = *self;
+        // spawn_forever so the timer keeps running even if the component is gone
         spawn_forever(async move {
             TimeoutFuture::new(1_000).await;
-            if (state.notify_count)() == my_count {
+            // only hide it if no new message came in the meantime
+            if *state.notify_count.read() == count_now {
                 state.notify_text.set(None);
             }
         });
@@ -53,13 +58,14 @@ impl AppState {
     pub fn copy_password(&mut self, password: &str) {
         browser::copy(password);
         self.notify("Password copied!");
-
         self.copy_count += 1;
-        let my_count = (self.copy_count)();
+        let count_now = *self.copy_count.read();
+
         let state = *self;
         spawn_forever(async move {
             TimeoutFuture::new(30_000).await;
-            if (state.copy_count)() == my_count {
+            // if another psw was copied in the meantime, its own timer clears it
+            if *state.copy_count.read() == count_now {
                 browser::copy("");
             }
         });
@@ -93,17 +99,13 @@ pub fn App() -> Element {
 #[component]
 fn Notify() -> Element {
     let state = use_context::<AppState>();
-    let count = (state.notify_count)();
 
-    let Some(text) = (state.notify_text)() else {
-        return rsx! {};
-    };
-
-    rsx! {
-        for count in [count] {
-            div { key: "{count}", class: "copy-notify show",
+    match (state.notify_text)() {
+        Some(text) => rsx! {
+            div { class: "copy-notify",
                 h2 { "{text}" }
             }
-        }
+        },
+        None => rsx! {},
     }
 }

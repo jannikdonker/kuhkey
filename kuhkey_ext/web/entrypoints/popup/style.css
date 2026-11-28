@@ -7,6 +7,7 @@
   --text-muted: rgba(255, 255, 255, 0.6);
   --accent: #6C2E1F;
   --accent-text: #ffffff;
+  --radius: 8px;
 
   color-scheme: dark;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -45,7 +46,7 @@ body {
   background-color: var(--bg);
 }
 
-/* dioxus mounts into #main, this keeps body's flex layout working on its children */
+/* dioxus puts everything into #main, without this the body layout breaks */
 #main {
   display: contents;
 }
@@ -245,7 +246,7 @@ body {
 
 .field-password {
   display: inline-block;
-  /* at least as wide as the cow mask, otherwise it shrinks under the mouse when revealed -> hides again */
+  /* same width as the cows, otherwise it jumps around on hover */
   min-width: 170px;
   margin-left: -6px;
   padding: 0 6px;
@@ -277,33 +278,21 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    display: none;
     box-shadow: 0 0 60px 2px #39FF14;
-    /* it sits on top of the close button, so let clicks go through it */
+    animation: fadeIn 0.3s ease;
+    /* so you can still click the X under it */
     pointer-events: none;
+}
 
-    }
+.copy-notify h2 {
+    margin: 0;
+    font-size: 0.8rem;
+    font-weight: 900;
+    font-family: sans-serif;
+    color: white;
+}
 
-    .copy-notify h2 {
-        margin: 0;
-        font-size: 0.8rem;
-        font-weight: 900;
-        font-family: sans-serif;
-        color: white;
-    }
-
-    .copy-notify.show {
-        display: flex;
-        animation:
-            fadeIn 0.3s ease,
-            fadeOut 0.5s ease 2s forwards;
-    }
-    @keyframes fadeIn {
-        from { opacity: 0; }
-        to   { opacity: 1; }
-    }
-
-    @keyframes fadeOut {
-        from { opacity: 1; }
-        to   { opacity: 0; }
-    }
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}

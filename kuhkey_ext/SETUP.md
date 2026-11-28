@@ -2,27 +2,15 @@
 
 ## How it works
 
-The popup UI is a Dioxus app written in Rust. WXT only provides the extension shell (manifest, background, content script, bundling).
+The popup is written in Rust with Dioxus. `wasm-pack` builds it to `web/wasm/`, and WXT (in `web/`) turns that into the extension. `main.ts` only loads the wasm, the Rust code does the rest.
 
-```
-kuhkey_core     Rust logic (crypto, vault, generator)
-kuhkey_ext      Dioxus components (src/components/), mounted by #[wasm_bindgen(start)]
-  ↓ wasm-pack build
-web/wasm/       .wasm + JS wrapper
-  ↓ main.ts only calls init()
-web/            WXT project → .output/chrome-mv3/
-```
+- `src/lib.rs` starts Dioxus inside `<div id="main">` (in `entrypoints/popup/index.html`)
+- `src/app.rs` main component and the shared state
+- `src/components/` the list on the left and the detail view on the right
+- `src/mock.rs` fake entries for now (no login or adding entries yet)
+- the css is still in `entrypoints/popup/style.css`
 
-- `src/lib.rs`: starts Dioxus and mounts it into `<div id="main">` in `entrypoints/popup/index.html`.
-- `src/app.rs`: root component plus shared state (entries, selected entry, toast).
-- `src/components/`: entry list (`list.rs`) and detail view (`detail.rs`).
-- `src/mock.rs`: the test entries shown for now (no login, no adding/editing yet).
-- `src/browser.rs`: clipboard.
-- Styling still comes from `entrypoints/popup/style.css`; the components use the same class names.
-
-Things to keep in mind (MV3 CSP allows no `eval`):
-- Don't use `document::eval`, `document::Title` & co. from Dioxus, they need `eval`.
-- Don't use `asset!()` (that only works with `dx`). Put static files in `web/public/`, they are served from the extension root (e.g. `/cow.jpeg`).
+Note: extensions don't allow `eval`, so `document::eval` and `document::Title` from Dioxus don't work. `asset!()` also doesn't work without `dx`, put images in `web/public/` instead and use them like `/cow.jpeg`.
 
 ## First-time setup
 
