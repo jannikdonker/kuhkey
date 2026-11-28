@@ -2,33 +2,15 @@
 
 ## How it works
 
-```
-kuhkey_core     Rust logic (crypto, vault, generator)
-kuhkey_ext      exports functions with #[wasm_bindgen]
-  ↓ wasm-pack build
-web/wasm/       .wasm + JS wrapper + .d.ts
-  ↓ import in TypeScript
-web/            WXT project → .output/chrome-mv3/
-```
+The popup is written in Rust with Dioxus. `wasm-pack` builds it to `web/wasm/`, and WXT (in `web/`) turns that into the extension. `main.ts` only loads the wasm, the Rust code does the rest.
 
-Rust function in `kuhkey_ext/src/lib.rs`:
+- `src/lib.rs` starts Dioxus inside `<div id="main">` (in `entrypoints/popup/index.html`)
+- `src/app.rs` main component and the shared state
+- `src/components/` the list on the left and the detail view on the right
+- `src/mock.rs` fake entries for now (no login or adding entries yet)
+- the css is still in `entrypoints/popup/style.css`
 
-```rust
-use wasm_bindgen::prelude::*;
-
-#[wasm_bindgen]
-pub fn greet(name: &str) -> String {
-    format!("Hello {name}")
-}
-```
-
-Called from `web/entrypoints/popup/main.ts`. `init()` loads the WASM module and must finish before the first call:
-
-```ts
-import init, { greet } from '../../wasm/kuhkey_ext.js';
-
-init().then(() => console.log(greet('Yoshi')));
-```
+Note: extensions don't allow `eval`, so `document::eval` and `document::Title` from Dioxus don't work. `asset!()` also doesn't work without `dx`, put images in `web/public/` instead and use them like `/cow.jpeg`.
 
 ## First-time setup
 
@@ -46,11 +28,9 @@ Then reopen your terminal.
 Build the project:
 
 ```bash
-# in kuhkey_ext/
-wasm-pack build --target web --out-dir web/wasm
-
 # in kuhkey_ext/web/
 npm install
+npm run wasm   # = wasm-pack build --target web --out-dir web/wasm (in kuhkey_ext/)
 npm run dev
 ```
 
@@ -59,7 +39,7 @@ npm run dev
 ## Workflow
 
 - Changes in `web/`: reload automatically.
-- Changes to the Rust code: run `wasm-pack build` again.
+- Changes to the Rust code (the whole UI): run `npm run wasm` again.
 - `npm run build` creates the finished extension in `web/.output/chrome-mv3/`; load it via `chrome://extensions` → "Load unpacked".
 
 ## Troubleshooting
