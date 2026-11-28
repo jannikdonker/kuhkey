@@ -1,14 +1,34 @@
 use std::{env, ffi::OsString, io::IsTerminal};
 
 use anyhow::bail;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use cli_clipboard::ClipboardProvider;
 use colored::Colorize;
-use kuhkey_core::generator::{PasswordOptions, generate_password};
+use kuhkey_core::generator::{
+    PasswordOptions, UsernameOptions, WordCase, generate_password, generate_username,
+};
 
 const DEFAULT_PASSWORD_LENGTH: usize = 16;
 pub const MINIMUM_PASSWORD_LENGTH: usize = 1;
 const ENVIRONMENT_VARIABLE_NAME: &str = "KUHKEY_CLI_KEY";
+
+// cli-seitiges enum weil core kein clap hat
+#[derive(Clone, Copy, ValueEnum)]
+enum CaseArg {
+    Lower,
+    Capitalized,
+    Upper,
+}
+
+impl CaseArg {
+    fn as_wordcase(self) -> WordCase {
+        match self {
+            CaseArg::Lower => WordCase::Lower,
+            CaseArg::Capitalized => WordCase::Capitalized,
+            CaseArg::Upper => WordCase::Upper,
+        }
+    }
+}
 
 #[derive(Parser)]
 struct Cli {
@@ -61,6 +81,41 @@ enum Commands {
         /// Exclude look alikes
         #[arg(long = "no-alikes")]
         exclude_lookalikes: bool,
+    },
+
+    /// Generate a new username
+    GenUser {
+        /// Put the username into the users clipboard after generating
+        #[arg(long = "copy", short = 'c')]
+        copy: bool,
+
+        /// max len of the username
+        #[arg(long = "len")]
+        max_length: Option<usize>,
+
+        /// how many words
+        #[arg(long = "words", short = 'w')]
+        word_count: Option<usize>,
+
+        /// casing of the words
+        #[arg(long = "case", value_enum)]
+        case: Option<CaseArg>,
+
+        /// put a "_" between the words
+        #[arg(long = "separator", short = 's')]
+        separator: bool,
+
+        /// add random numbers to the username
+        #[arg(long = "numbers", short = 'n')]
+        numbers: bool,
+
+        /// put the numbers in front instead of the end
+        #[arg(long = "front", short = 'f')]
+        numbers_front: bool,
+
+        /// how many numbers
+        #[arg(long = "num-len")]
+        numbers_len: Option<usize>,
     },
 
     /// Get the password for a given identifier
@@ -119,6 +174,25 @@ fn main() -> anyhow::Result<()> {
                 identifier
             );
         }
+        Commands::GenUser {
+            copy,
+            max_length,
+            word_count,
+            case,
+            separator,
+            numbers,
+            numbers_front,
+            numbers_len,
+        } => cli_gen_username(
+            *copy,
+            *max_length,
+            *word_count,
+            *case,
+            *separator,
+            *numbers,
+            *numbers_front,
+            *numbers_len,
+        )?,
     }
 
     Ok(())
@@ -254,6 +328,52 @@ fn cli_gen_password(
         println!("Your password: \n{}", generated_password)
     }
 
+    Ok(())
+}
+
+fn cli_gen_username(
+    copy: bool,
+    max_length: Option<usize>,
+    word_count: Option<usize>,
+    case: Option<CaseArg>,
+    separator: bool,
+    numbers: bool,
+    numbers_front: bool,
+    numbers_len: Option<usize>,
+) -> anyhow::Result<()> {
+    // alles was der user nicht angibt kommt aus dem default
+    let def = UsernameOptions::default();
+    let opts = UsernameOptions {
+        max_length: max_length.unwrap_or(def.max_length),
+        word_count: word_count.unwrap_or(def.word_count),
+        case: case.map(CaseArg::as_wordcase).unwrap_or(def.case),
+        seperator: separator,
+        numbers,
+        numbers_front,
+        numbers_len: numbers_len.unwrap_or(def.numbers_len),
+    };
+
+    let username = match generate_username(&opts) {
+        Ok(u) => u,
+        Err(err) => bail!("{}", format!("Unable to generate username: {err}").red()),
+    };
+
+    if copy {
+        #[cfg(not(target_os = "linux"))]
+        let res = cli_clipboard::ClipboardContext::new()
+            .and_then(|mut c| c.set_contents(username.clone()));
+
+        #[cfg(target_os = "linux")]
+        let res = copy_to_clipboard(&username);
+
+        if res.is_ok() {
+            println!("{}", "The username is in your clipboard".green());
+            return Ok(());
+        }
+        println!("{}", "Failed to put the username into your clipboard".red());
+    }
+
+    println!("Your username: \n{}", username);
     Ok(())
 }
 
